@@ -384,6 +384,17 @@ class TelegramClientService {
       console.log('Telegram bot stopped.');
     }
   };
+
+  /**
+   * Sends a message to a chat (for proactive notifications).
+   */
+  sendMessage = async (chatId: number, message: string): Promise<void> => {
+    if (!this.#bot) {
+      throw new TelegramNotConfiguredError();
+    }
+
+    await this.#bot.api.sendMessage(chatId, message);
+  };
 }
 
 // Re-export types and schemas
