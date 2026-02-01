@@ -2,7 +2,7 @@ import type { Services } from '../services/services.ts';
 import { CalendarService } from '../calendar/calendar.ts';
 import { TaskService } from '../tasks/tasks.ts';
 
-import type { CheckExecutor, ProactiveResult, CreateCheckInput } from './proactive.schemas.ts';
+import type { CheckContext, CheckExecutor, ProactiveResult, CreateCheckInput } from './proactive.schemas.ts';
 
 // ============================================================================
 // Built-in Check Definitions
@@ -63,7 +63,7 @@ const calendarLookaheadCheck: BuiltinCheckDefinition = {
         return null;
       }
 
-      const minutesUntil = Math.round((new Date(nextEvent.startTime).getTime() - now.getTime()) / (60 * 1000));
+      const minutesUntil = Math.round((new Date(nextEvent.start).getTime() - now.getTime()) / (60 * 1000));
 
       return {
         finding: `You have "${nextEvent.title}" starting in ${minutesUntil} minutes`,
@@ -177,7 +177,7 @@ const dailyBriefingCheck: BuiltinCheckDefinition = {
         const eventList = events
           .slice(0, 3)
           .map((e) => {
-            const time = new Date(e.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const time = new Date(e.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             return `  • ${time} ${e.title}`;
           })
           .join('\n');

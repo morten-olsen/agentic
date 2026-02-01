@@ -20,7 +20,11 @@ const orchestratorConfigSchema = z.object({
   llm: llmConfigSchema,
 });
 
-type OrchestratorConfig = z.input<typeof orchestratorConfigSchema>;
+/** Input type for configure() - allows optional fields */
+type OrchestratorConfigInput = z.input<typeof orchestratorConfigSchema>;
+
+/** Output type after parsing - all defaults applied */
+type OrchestratorConfig = z.infer<typeof orchestratorConfigSchema>;
 
 /**
  * Message role types.
@@ -153,6 +157,7 @@ type MessageRow = z.infer<typeof messageRowSchema>;
 
 export type {
   LLMConfig,
+  OrchestratorConfigInput,
   OrchestratorConfig,
   MessageRole,
   Message,

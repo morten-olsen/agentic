@@ -140,6 +140,7 @@ const createHelpMessage = (): string => {
 
 /start - Welcome message
 /new - Start a new conversation
+/id - Show conversation ID (for debugging)
 /help - Show this help message
 
 Just send me a text message to chat. I'll remember our conversation until you start a new one with /new.

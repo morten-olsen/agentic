@@ -267,9 +267,9 @@ const makeRoutingDecision = async (
  * Sets Do Not Disturb mode.
  */
 const setDoNotDisturb = async (db: Knex, until: Date | null): Promise<AttentionBudget> => {
-  // Pass explicit null when clearing DND, or the ISO string when setting
+  // Pass explicit undefined when clearing DND, or the ISO string when setting
   return updateAttentionBudget(db, {
-    manualDndUntil: until === null ? null : until.toISOString(),
+    manualDndUntil: until === null ? undefined : until.toISOString(),
   });
 };
 

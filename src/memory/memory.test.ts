@@ -595,6 +595,9 @@ describe('Memory Module', () => {
           interruptRequired: false,
           currentInterrupt: null,
           memoryContext: [],
+          turnCount: 0,
+          maxTurns: 20,
+          turnLimitReached: false,
         };
 
         const result = await node(state);
@@ -614,6 +617,9 @@ describe('Memory Module', () => {
           interruptRequired: false,
           currentInterrupt: null,
           memoryContext: [],
+          turnCount: 0,
+          maxTurns: 20,
+          turnLimitReached: false,
         };
 
         const result = await node(state);
@@ -633,6 +639,9 @@ describe('Memory Module', () => {
           interruptRequired: false,
           currentInterrupt: null,
           memoryContext: [],
+          turnCount: 0,
+          maxTurns: 20,
+          turnLimitReached: false,
         };
 
         const result = await node(state);
@@ -653,6 +662,9 @@ describe('Memory Module', () => {
           interruptRequired: false,
           currentInterrupt: null,
           memoryContext: [],
+          turnCount: 0,
+          maxTurns: 20,
+          turnLimitReached: false,
         };
 
         const result = await node(state);

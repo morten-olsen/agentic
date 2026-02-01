@@ -19,6 +19,7 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 - **External Clients**: `docs/external-clients.md` - Guide for building external client integrations
 - **Coding Standards**: `docs/coding-standards.md` - TypeScript conventions
 - **Testing Strategy**: `docs/testing-strategy.md` - Testing patterns and infrastructure
+- **Debugging**: `docs/debugging.md` - Conversation-level debugging tools and techniques
 
 ## Tech Stack
 
@@ -206,7 +207,33 @@ pnpm build             # TypeScript build
 pnpm cli               # Start the interactive CLI
 pnpm telegram          # Start the Telegram bot
 pnpm proactive         # Start the proactive scheduler
+pnpm conversation <id> # Inspect a conversation by ID (debugging)
 ```
+
+## Debugging Conversations
+
+When a conversation doesn't behave as expected, use these tools to investigate:
+
+```bash
+# In Telegram: get the conversation ID
+/id
+
+# Inspect conversation history, tool calls, and interrupts
+pnpm conversation <conversation-id>
+
+# Interactive testing for reproducing issues
+pnpm conversation:test new
+pnpm conversation:test send <id> "message"
+pnpm conversation:test approve <interrupt-id>
+pnpm conversation:test status <id>
+```
+
+When working with an AI coding agent to debug:
+1. Get the conversation ID from `/id` (Telegram) or the CLI
+2. Run `pnpm conversation <id>` and share the output
+3. The agent can analyze message flow, tool calls, checkpoint state, and interrupts
+
+See `docs/debugging.md` for detailed debugging workflows, common issues, and advanced techniques.
 
 ## Documentation Maintenance
 

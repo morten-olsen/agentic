@@ -21,6 +21,28 @@ import {
 } from './telegram.handlers.ts';
 
 /**
+ * Typing indicator refresh interval in milliseconds.
+ * Telegram's typing indicator expires after ~5 seconds, so we refresh every 4 seconds.
+ */
+const TYPING_INTERVAL_MS = 4000;
+
+/**
+ * Starts a continuous typing indicator that refreshes until stopped.
+ * Returns a cleanup function to stop the indicator.
+ */
+const startTypingIndicator = (ctx: Context): (() => void) => {
+  // Send immediately
+  void ctx.replyWithChatAction('typing');
+
+  // Refresh on interval
+  const interval = setInterval(() => {
+    void ctx.replyWithChatAction('typing');
+  }, TYPING_INTERVAL_MS);
+
+  return () => clearInterval(interval);
+};
+
+/**
  * Error thrown when the Telegram client is not configured.
  */
 class TelegramNotConfiguredError extends Error {
@@ -117,6 +139,7 @@ class TelegramClientService {
     this.#bot.command('start', this.#handleStart);
     this.#bot.command('new', this.#handleNew);
     this.#bot.command('help', this.#handleHelp);
+    this.#bot.command('id', this.#handleId);
 
     // Message handler
     this.#bot.on('message:text', this.#handleMessage);
@@ -173,6 +196,28 @@ class TelegramClientService {
   };
 
   /**
+   * Handles the /id command - shows the current conversation ID for debugging.
+   */
+  #handleId = async (ctx: Context): Promise<void> => {
+    const chatId = ctx.chat?.id;
+
+    if (!chatId) {
+      await ctx.reply('❌ Unable to determine chat ID');
+      return;
+    }
+
+    const existing = await getTelegramChat(this.#db(), chatId);
+    if (existing) {
+      await ctx.reply(
+        `🔍 *Debug Info*\n\nConversation ID:\n\`${existing.conversationId}\`\n\nUse this ID with \`pnpm conversation <id>\` to inspect the conversation.`,
+        { parse_mode: 'Markdown' },
+      );
+    } else {
+      await ctx.reply('No conversation found for this chat. Send a message to start one.');
+    }
+  };
+
+  /**
    * Handles incoming text messages.
    */
   #handleMessage = async (ctx: Context): Promise<void> => {
@@ -185,8 +230,8 @@ class TelegramClientService {
     // Get or create conversation
     const conversationId = await this.#getOrCreateConversation(chatId, userId);
 
-    // Show typing indicator
-    await ctx.replyWithChatAction('typing');
+    // Start continuous typing indicator
+    const stopTyping = startTypingIndicator(ctx);
 
     try {
       let responseBuffer = '';
@@ -198,8 +243,7 @@ class TelegramClientService {
             break;
 
           case 'tool_start':
-            // Refresh typing indicator
-            await ctx.replyWithChatAction('typing');
+            // Typing indicator is already running continuously
             break;
 
           case 'interrupt': {
@@ -218,13 +262,11 @@ class TelegramClientService {
 
             const statusMsg = chunk.approved ? '✓ Approved' : '✗ Denied';
             await ctx.reply(statusMsg);
-
-            // Refresh typing indicator for continued response
-            await ctx.replyWithChatAction('typing');
             break;
           }
 
           case 'done':
+            stopTyping();
             if (responseBuffer.trim()) {
               await sendLongMessage(ctx, responseBuffer);
             }
@@ -232,11 +274,13 @@ class TelegramClientService {
             break;
 
           case 'error':
+            stopTyping();
             await ctx.reply(`❌ Error: ${chunk.error}`);
             break;
         }
       }
     } catch (error) {
+      stopTyping();
       const errorMessage = error instanceof Error ? error.message : String(error);
       await ctx.reply(`❌ Error: ${errorMessage}`);
     }
@@ -273,8 +317,8 @@ class TelegramClientService {
     // Edit the message to remove keyboard
     await ctx.editMessageReplyMarkup(undefined);
 
-    // Show typing indicator
-    await ctx.replyWithChatAction('typing');
+    // Start continuous typing indicator
+    const stopTyping = startTypingIndicator(ctx);
 
     try {
       // Build response based on action
@@ -294,7 +338,7 @@ class TelegramClientService {
             break;
 
           case 'tool_start':
-            await ctx.replyWithChatAction('typing');
+            // Typing indicator is already running continuously
             break;
 
           case 'interrupt': {
@@ -306,10 +350,10 @@ class TelegramClientService {
 
           case 'interrupt_resolved':
             this.#pendingInterrupts.delete(chatId);
-            await ctx.replyWithChatAction('typing');
             break;
 
           case 'done':
+            stopTyping();
             if (responseBuffer.trim()) {
               await sendLongMessage(ctx, responseBuffer);
             }
@@ -317,11 +361,13 @@ class TelegramClientService {
             break;
 
           case 'error':
+            stopTyping();
             await ctx.reply(`❌ Error: ${chunk.error}`);
             break;
         }
       }
     } catch (error) {
+      stopTyping();
       const errorMessage = error instanceof Error ? error.message : String(error);
       await ctx.reply(`❌ Error: ${errorMessage}`);
     }

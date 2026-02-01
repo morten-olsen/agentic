@@ -81,9 +81,9 @@ describe('Interrupt Flow', () => {
       http.post('*/chat/completions', () => {
         callCount++;
         // Call 1: Initial request triggers tool call → interrupt
-        // Call 2: After approval, router called again → same tool call
-        // Call 3: After tool execution → final text response
-        if (callCount <= 2) {
+        // (Resume skips router - no LLM call needed since tool calls are preserved)
+        // Call 2: After tool execution → final text response
+        if (callCount <= 1) {
           return HttpResponse.json(
             createToolCallCompletion([
               {
@@ -271,9 +271,9 @@ describe('Interrupt Flow', () => {
       http.post('*/chat/completions', () => {
         callCount++;
         // Call 1: Initial request triggers tool call → interrupt
-        // Call 2: After approval via API, router called again → same tool call
-        // Call 3: After tool execution → final text response
-        if (callCount <= 2) {
+        // (Resume skips router - no LLM call needed since tool calls are preserved)
+        // Call 2: After tool execution → final text response
+        if (callCount <= 1) {
           return HttpResponse.json(
             createToolCallCompletion([
               {
@@ -311,5 +311,139 @@ describe('Interrupt Flow', () => {
     // Contact should be deleted
     const deleted = await contactsService.getContact(contact.id);
     expect(deleted).toBeNull();
+  });
+});
+
+describe('Turn Limit Flow', () => {
+  let services: Services;
+  let orchestrator: OrchestratorService;
+
+  beforeEach(async () => {
+    const result = await createTestServices();
+    services = result.services;
+    orchestrator = result.orchestrator;
+  });
+
+  afterEach(async () => {
+    await services.destroy();
+  });
+
+  it('triggers turn limit interrupt when max turns reached', async () => {
+    // Set up a scenario that will loop multiple times
+    let callCount = 0;
+    server.use(
+      http.post('*/chat/completions', () => {
+        callCount++;
+        // Return tool calls for first 25 turns to exceed the limit
+        if (callCount <= 25) {
+          return HttpResponse.json(
+            createToolCallCompletion([
+              {
+                id: `call_echo_${callCount}`,
+                name: 'builtin.echo',
+                args: { message: `Turn ${callCount}` },
+              },
+            ]),
+          );
+        }
+        return HttpResponse.json(createChatCompletion('Done with many turns'));
+      }),
+    );
+
+    const conversationId = await orchestrator.startConversation();
+    const chunks: ChatChunk[] = [];
+
+    for await (const chunk of orchestrator.chat(conversationId, 'Echo many times')) {
+      chunks.push(chunk);
+    }
+
+    // Should have a turn limit interrupt at turn 20 (19 tool calls complete, 20th turn hits limit)
+    const interruptChunk = chunks.find((c) => c.type === 'interrupt');
+    expect(interruptChunk).toBeDefined();
+    if (interruptChunk?.type === 'interrupt') {
+      expect(interruptChunk.interrupt.type).toBe('turn_limit');
+    }
+  });
+
+  it('continues after turn limit approval', async () => {
+    let callCount = 0;
+    server.use(
+      http.post('*/chat/completions', () => {
+        callCount++;
+        // Return tool calls until turn limit, then after approval continue a bit and finish
+        if (callCount <= 25) {
+          return HttpResponse.json(
+            createToolCallCompletion([
+              {
+                id: `call_echo_${callCount}`,
+                name: 'builtin.echo',
+                args: { message: `Turn ${callCount}` },
+              },
+            ]),
+          );
+        }
+        return HttpResponse.json(createChatCompletion('Completed after turn limit approval'));
+      }),
+    );
+
+    const conversationId = await orchestrator.startConversation();
+
+    // First chat triggers the turn limit at turn 20
+    const firstChunks: ChatChunk[] = [];
+    for await (const chunk of orchestrator.chat(conversationId, 'Echo many times')) {
+      firstChunks.push(chunk);
+    }
+
+    // Should have turn limit interrupt
+    const interruptChunk = firstChunks.find((c) => c.type === 'interrupt');
+    expect(interruptChunk).toBeDefined();
+
+    // Approve the turn limit
+    const { response, chunks } = await collectChatResponse(orchestrator.chat(conversationId, 'yes'));
+
+    // Should have interrupt_resolved chunk
+    expect(chunks.some((c) => c.type === 'interrupt_resolved')).toBe(true);
+
+    // Should get a final response after continuing
+    expect(response).toBeDefined();
+  });
+
+  it('stops gracefully when turn limit denied', async () => {
+    let callCount = 0;
+    server.use(
+      http.post('*/chat/completions', () => {
+        callCount++;
+        // Keep returning tool calls - we'll hit the turn limit
+        if (callCount <= 25) {
+          return HttpResponse.json(
+            createToolCallCompletion([
+              {
+                id: `call_echo_${callCount}`,
+                name: 'builtin.echo',
+                args: { message: `Turn ${callCount}` },
+              },
+            ]),
+          );
+        }
+        return HttpResponse.json(createChatCompletion('Should not reach here'));
+      }),
+    );
+
+    const conversationId = await orchestrator.startConversation();
+
+    // First chat triggers the turn limit at turn 20
+    for await (const chunk of orchestrator.chat(conversationId, 'Echo many times')) {
+      // consume
+      void chunk;
+    }
+
+    // Deny the turn limit
+    const { chunks } = await collectChatResponse(orchestrator.chat(conversationId, 'no'));
+
+    // Should have interrupt_resolved chunk
+    expect(chunks.some((c) => c.type === 'interrupt_resolved')).toBe(true);
+
+    // Should have a done chunk (conversation ended gracefully)
+    expect(chunks.some((c) => c.type === 'done')).toBe(true);
   });
 });

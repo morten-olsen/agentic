@@ -26,9 +26,10 @@ const createTestTool = (id: string): ToolDefinition<{ value: string }, { result:
   execute: async (input) => ({ result: input.value.toUpperCase() }),
 });
 
-const createContext = (): ToolContext => ({
+const createContext = (services: Services): ToolContext => ({
   userId: 'test-user',
   conversationId: 'test-conversation',
+  services,
 });
 
 describe('ToolRegistry', () => {
@@ -155,19 +156,19 @@ describe('ToolRegistry', () => {
       const tool = createTestTool('test-1');
       registry.register(tool);
 
-      const result = await registry.execute('test-1', { value: 'hello' }, createContext());
+      const result = await registry.execute('test-1', { value: 'hello' }, createContext(services));
       expect(result).toEqual({ result: 'HELLO' });
     });
 
     it('throws for unknown tool', async () => {
-      await expect(registry.execute('unknown', {}, createContext())).rejects.toThrow(ToolNotFoundError);
+      await expect(registry.execute('unknown', {}, createContext(services))).rejects.toThrow(ToolNotFoundError);
     });
 
     it('validates input', async () => {
       const tool = createTestTool('test-1');
       registry.register(tool);
 
-      await expect(registry.execute('test-1', { value: 123 }, createContext())).rejects.toThrow(
+      await expect(registry.execute('test-1', { value: 123 }, createContext(services))).rejects.toThrow(
         ToolInputValidationError,
       );
     });
@@ -179,7 +180,7 @@ describe('ToolRegistry', () => {
       const events: ToolExecutionEvent[] = [];
       registry.onExecution((event) => events.push(event));
 
-      await registry.execute('test-1', { value: 'hello' }, createContext());
+      await registry.execute('test-1', { value: 'hello' }, createContext(services));
 
       // Should emit pending and success events
       expect(events).toHaveLength(2);
@@ -195,7 +196,7 @@ describe('ToolRegistry', () => {
       const events: ToolExecutionEvent[] = [];
       registry.onExecution((event) => events.push(event));
 
-      await expect(registry.execute('test-1', { value: 123 }, createContext())).rejects.toThrow();
+      await expect(registry.execute('test-1', { value: 123 }, createContext(services))).rejects.toThrow();
 
       // Should emit pending and error events
       expect(events).toHaveLength(2);
@@ -212,11 +213,11 @@ describe('ToolRegistry', () => {
       const events: ToolExecutionEvent[] = [];
       const unsubscribe = registry.onExecution((event) => events.push(event));
 
-      await registry.execute('test-1', { value: 'first' }, createContext());
+      await registry.execute('test-1', { value: 'first' }, createContext(services));
       expect(events).toHaveLength(2);
 
       unsubscribe();
-      await registry.execute('test-1', { value: 'second' }, createContext());
+      await registry.execute('test-1', { value: 'second' }, createContext(services));
       expect(events).toHaveLength(2); // No new events
     });
   });
@@ -245,14 +246,16 @@ describe('registerBuiltinTools', () => {
 });
 
 describe('echoTool', () => {
+  const services = new Services();
+
   it('echoes message', async () => {
-    const result = await echoTool.execute({ message: 'Hello!' }, createContext());
+    const result = await echoTool.execute({ message: 'Hello!' }, createContext(services));
     expect(result.echoed).toBe('Hello!');
     expect(result.timestamp).toBeDefined();
   });
 
   it('converts to uppercase when requested', async () => {
-    const result = await echoTool.execute({ message: 'Hello!', uppercase: true }, createContext());
+    const result = await echoTool.execute({ message: 'Hello!', uppercase: true }, createContext(services));
     expect(result.echoed).toBe('HELLO!');
   });
 });

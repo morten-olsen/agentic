@@ -11,7 +11,13 @@ import { toLangChainTools } from '../tools/adapters/adapters.langchain.ts';
 import { registerBuiltinTools } from '../tools/builtin/builtin.ts';
 import { MemoryService } from '../memory/memory.ts';
 
-import type { OrchestratorConfig, Conversation, Message, ChatChunk } from './orchestrator.schemas.ts';
+import type {
+  OrchestratorConfigInput,
+  OrchestratorConfig,
+  Conversation,
+  Message,
+  ChatChunk,
+} from './orchestrator.schemas.ts';
 import { orchestratorConfigSchema } from './orchestrator.schemas.ts';
 import { DatabaseCheckpointer } from './orchestrator.checkpointer.ts';
 import { createOrchestratorGraph } from './orchestrator.graph.ts';
@@ -62,7 +68,7 @@ class OrchestratorService {
   /**
    * Configures the orchestrator with LLM settings.
    */
-  configure = (config: Partial<OrchestratorConfig> & { llm: { apiKey: string } }): void => {
+  configure = (config: OrchestratorConfigInput): void => {
     this.#config = orchestratorConfigSchema.parse(config);
 
     this.#llm = new ChatOpenAI({
@@ -238,17 +244,36 @@ class OrchestratorService {
       }
 
       // Invoke the graph
+      // Use a high recursionLimit since we have our own turn counter
+      // Each turn involves multiple node visits (memory → turn_counter → router → risk_gate → tools)
       const result = await compiledGraph.invoke(
         {
           conversationId,
           messages: historyMessages,
+          turnCount: 0,
+          maxTurns: 20,
+          turnLimitReached: false,
         },
         {
           configurable: { thread_id: conversationId },
+          recursionLimit: 150, // Allow up to ~30 turns (5 nodes per turn)
         },
       );
 
-      // Check if graph halted for an interrupt
+      // Check if graph halted for a turn limit interrupt
+      if (result.turnLimitReached) {
+        const interrupt = await this.#interruptService.create({
+          conversationId,
+          type: 'turn_limit',
+          prompt: `The conversation has reached ${result.turnCount} turns. Would you like to continue?`,
+          checkpointId: conversationId,
+        });
+
+        yield { type: 'interrupt', interrupt };
+        return;
+      }
+
+      // Check if graph halted for a tool approval interrupt
       if (result.interruptRequired && result.pendingToolCall) {
         // Create the interrupt in the database
         const interrupt = await this.#interruptService.create({
@@ -328,6 +353,17 @@ class OrchestratorService {
       approved: response.approved ?? false,
       interruptId: interrupt.id,
     };
+
+    // Handle turn limit interrupts
+    if (interrupt.type === 'turn_limit') {
+      if (response.approved) {
+        yield* this.#resumeAfterTurnLimit(resolvedInterrupt);
+      } else {
+        // User doesn't want to continue - just end the conversation turn
+        yield { type: 'done' };
+      }
+      return;
+    }
 
     if (response.approved) {
       // Resume execution with the approved tool
@@ -413,29 +449,6 @@ class OrchestratorService {
         checkpointer: this.#checkpointer as DatabaseCheckpointer,
       });
 
-      // Load existing state and update to mark tool as approved
-      const history = await getMessages(this.#db(), conversationId);
-      const historyMessages: BaseMessage[] = [];
-
-      for (const msg of history) {
-        if (msg.role === 'user') {
-          historyMessages.push(new HumanMessage(msg.content));
-        } else if (msg.role === 'assistant') {
-          const aiMsg = new AIMessage(msg.content);
-          if (msg.toolCalls) {
-            (aiMsg as AIMessage).tool_calls = JSON.parse(msg.toolCalls);
-          }
-          historyMessages.push(aiMsg);
-        } else if (msg.role === 'tool') {
-          historyMessages.push(
-            new ToolMessage({
-              content: msg.content,
-              tool_call_id: msg.toolCallId ?? '',
-            }),
-          );
-        }
-      }
-
       // Create approved tool call from interrupt
       const approvedToolCall = interrupt.toolCall
         ? {
@@ -445,21 +458,178 @@ class OrchestratorService {
           }
         : null;
 
-      // Invoke with approved tool call
+      // Get the current checkpoint state to preserve messages
+      const currentState = await compiledGraph.getState({
+        configurable: { thread_id: conversationId },
+      });
+
+      // Get existing messages from checkpoint (preserves tool calls and results)
+      const checkpointMessages = currentState.values?.messages ?? [];
+
+      // Get existing approved tool calls from checkpoint and merge with newly approved
+      const existingApproved = currentState.values?.approvedToolCalls ?? [];
+      const mergedApproved = approvedToolCall ? [...existingApproved, approvedToolCall] : existingApproved;
+
+      // Invoke with merged approved tool calls, preserving checkpoint messages
       const result = await compiledGraph.invoke(
         {
           conversationId,
-          messages: historyMessages,
-          approvedToolCalls: approvedToolCall ? [approvedToolCall] : [],
+          messages: checkpointMessages,
+          approvedToolCalls: mergedApproved,
           interruptRequired: false,
           pendingToolCall: null,
         },
         {
           configurable: { thread_id: conversationId },
+          recursionLimit: 150,
         },
       );
 
-      // Check for another interrupt
+      // Check for turn limit interrupt
+      if (result.turnLimitReached) {
+        const newInterrupt = await this.#interruptService.create({
+          conversationId,
+          type: 'turn_limit',
+          prompt: `The conversation has reached ${result.turnCount} turns. Would you like to continue?`,
+          checkpointId: conversationId,
+        });
+
+        yield { type: 'interrupt', interrupt: newInterrupt };
+        return;
+      }
+
+      // Check for tool approval interrupt
+      if (result.interruptRequired && result.pendingToolCall) {
+        const newInterrupt = await this.#interruptService.create({
+          conversationId,
+          type: 'tool_approval',
+          prompt: formatApprovalPrompt(result.pendingToolCall),
+          toolCall: formatToolCallInfo(result.pendingToolCall),
+          checkpointId: conversationId,
+        });
+
+        yield { type: 'interrupt', interrupt: newInterrupt };
+        return;
+      }
+
+      // Extract response
+      const lastMessage = result.messages[result.messages.length - 1];
+      let responseContent = '';
+      let toolCalls: string | undefined;
+
+      if (lastMessage && 'content' in lastMessage) {
+        responseContent =
+          typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
+      }
+
+      if (lastMessage && 'tool_calls' in lastMessage) {
+        const aiMessage = lastMessage as AIMessage;
+        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+          toolCalls = JSON.stringify(aiMessage.tool_calls);
+        }
+      }
+
+      if (responseContent) {
+        yield { type: 'token', content: responseContent };
+      }
+
+      // Store assistant message
+      const tokenUsage =
+        lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;
+
+      await addMessage(this.#db(), conversationId, {
+        role: 'assistant',
+        content: responseContent,
+        toolCalls,
+        inputTokens: tokenUsage?.input_tokens,
+        outputTokens: tokenUsage?.output_tokens,
+      });
+
+      yield {
+        type: 'done',
+        inputTokens: tokenUsage?.input_tokens,
+        outputTokens: tokenUsage?.output_tokens,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      yield { type: 'error', error: errorMessage };
+    }
+  };
+
+  /**
+   * Resumes graph execution after turn limit approval.
+   * Resets the turn counter and continues execution.
+   */
+  #resumeAfterTurnLimit = async function* (this: OrchestratorService, interrupt: Interrupt): AsyncGenerator<ChatChunk> {
+    this.#ensureConfigured();
+
+    const conversationId = interrupt.conversationId;
+
+    try {
+      // Build system prompt with context
+      const personality = this.#services.get(PersonalityService);
+      const contextBuilder = this.#services.get(ContextBuilderService);
+      const context = await contextBuilder.buildContext();
+      const systemPrompt = await personality.buildSystemPrompt(context);
+
+      // Get tools as LangChain tools
+      const toolContext = {
+        userId: 'default',
+        conversationId,
+        services: this.#services,
+      };
+      const tools = toLangChainTools(this.#toolRegistry as ToolRegistry, toolContext);
+
+      // Create and compile graph
+      const graph = createOrchestratorGraph(
+        this.#llm as ChatOpenAI,
+        systemPrompt,
+        tools,
+        this.#toolRegistry as ToolRegistry,
+        undefined,
+        this.#memoryService ?? undefined,
+      );
+      const compiledGraph = graph.compile({
+        checkpointer: this.#checkpointer as DatabaseCheckpointer,
+      });
+
+      // Get the current checkpoint state
+      const currentState = await compiledGraph.getState({
+        configurable: { thread_id: conversationId },
+      });
+
+      // Get existing messages from checkpoint
+      const checkpointMessages = currentState.values?.messages ?? [];
+
+      // Reset the turn count and continue
+      const result = await compiledGraph.invoke(
+        {
+          conversationId,
+          messages: checkpointMessages,
+          turnCount: 0, // Reset turn count
+          turnLimitReached: false,
+          interruptRequired: false,
+        },
+        {
+          configurable: { thread_id: conversationId },
+          recursionLimit: 150,
+        },
+      );
+
+      // Check for another turn limit
+      if (result.turnLimitReached) {
+        const newInterrupt = await this.#interruptService.create({
+          conversationId,
+          type: 'turn_limit',
+          prompt: `The conversation has reached ${result.turnCount} more turns. Would you like to continue?`,
+          checkpointId: conversationId,
+        });
+
+        yield { type: 'interrupt', interrupt: newInterrupt };
+        return;
+      }
+
+      // Check for tool approval interrupt
       if (result.interruptRequired && result.pendingToolCall) {
         const newInterrupt = await this.#interruptService.create({
           conversationId,

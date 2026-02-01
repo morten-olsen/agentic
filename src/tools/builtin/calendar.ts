@@ -3,13 +3,20 @@ import { z } from 'zod';
 import type { ToolDefinition, ToolContext, ToolRegistry } from '../tools.ts';
 import { CalendarService } from '../../calendar/calendar.ts';
 import { calendarEventSchema, calendarContextSchema, attendeeSchema } from '../../calendar/calendar.schemas.ts';
+import {
+  flexibleDatetimeSchema,
+  optionalFlexibleDatetimeSchema,
+  optionalFlexibleDateSchema,
+} from '../../utils/date-parser.ts';
 
 // ============================================================================
 // Get Agenda
 // ============================================================================
 
 const getAgendaInputSchema = z.object({
-  date: z.string().optional().describe('Date to get agenda for (ISO format). Defaults to today.'),
+  date: optionalFlexibleDateSchema.describe(
+    'Date to get agenda for. Accepts "today", "tomorrow", "next Monday", or "2026-02-01". Defaults to today.',
+  ),
 });
 
 const getAgendaOutputSchema = z.object({
@@ -18,9 +25,10 @@ const getAgendaOutputSchema = z.object({
 });
 
 type GetAgendaInput = z.infer<typeof getAgendaInputSchema>;
+type GetAgendaRawInput = z.input<typeof getAgendaInputSchema>;
 type GetAgendaOutput = z.infer<typeof getAgendaOutputSchema>;
 
-const getAgendaTool: ToolDefinition<GetAgendaInput, GetAgendaOutput> = {
+const getAgendaTool: ToolDefinition<GetAgendaInput, GetAgendaOutput, GetAgendaRawInput> = {
   id: 'calendar.get_agenda',
   name: 'GetAgenda',
   description: "Get a human-readable agenda for a day. Defaults to today's agenda.",
@@ -37,6 +45,7 @@ const getAgendaTool: ToolDefinition<GetAgendaInput, GetAgendaOutput> = {
   tags: ['calendar', 'agenda', 'read'],
   examples: [
     { input: {}, description: "Get today's agenda" },
+    { input: { date: 'tomorrow' }, description: "Get tomorrow's agenda" },
     { input: { date: '2024-01-15' }, description: 'Get agenda for a specific date' },
   ],
   execute: async (input: GetAgendaInput, context: ToolContext): Promise<GetAgendaOutput> => {
@@ -128,8 +137,12 @@ const getCalendarContextTool: ToolDefinition<GetCalendarContextInput, GetCalenda
 // ============================================================================
 
 const getEventsInRangeInputSchema = z.object({
-  start: z.string().describe('Start of range (ISO datetime)'),
-  end: z.string().describe('End of range (ISO datetime)'),
+  start: flexibleDatetimeSchema.describe(
+    'Start of range. Accepts "today", "tomorrow at 9am", or ISO format "2026-02-01T00:00:00Z".',
+  ),
+  end: flexibleDatetimeSchema.describe(
+    'End of range. Accepts "tomorrow", "next week", or ISO format "2026-02-02T00:00:00Z".',
+  ),
 });
 
 const getEventsInRangeOutputSchema = z.object({
@@ -138,9 +151,10 @@ const getEventsInRangeOutputSchema = z.object({
 });
 
 type GetEventsInRangeInput = z.infer<typeof getEventsInRangeInputSchema>;
+type GetEventsInRangeRawInput = z.input<typeof getEventsInRangeInputSchema>;
 type GetEventsInRangeOutput = z.infer<typeof getEventsInRangeOutputSchema>;
 
-const getEventsInRangeTool: ToolDefinition<GetEventsInRangeInput, GetEventsInRangeOutput> = {
+const getEventsInRangeTool: ToolDefinition<GetEventsInRangeInput, GetEventsInRangeOutput, GetEventsInRangeRawInput> = {
   id: 'calendar.get_events_in_range',
   name: 'GetEventsInRange',
   description: 'Get all events within a time range.',
@@ -157,8 +171,12 @@ const getEventsInRangeTool: ToolDefinition<GetEventsInRangeInput, GetEventsInRan
   tags: ['calendar', 'events', 'read'],
   examples: [
     {
+      input: { start: 'today', end: 'tomorrow' },
+      description: "Get today's events using natural language",
+    },
+    {
       input: { start: '2024-01-15T00:00:00Z', end: '2024-01-16T00:00:00Z' },
-      description: 'Get events for a specific day',
+      description: 'Get events for a specific day using ISO format',
     },
   ],
   execute: async (input: GetEventsInRangeInput, context: ToolContext): Promise<GetEventsInRangeOutput> => {
@@ -174,8 +192,12 @@ const getEventsInRangeTool: ToolDefinition<GetEventsInRangeInput, GetEventsInRan
 
 const createEventInputSchema = z.object({
   title: z.string().min(1).describe('Event title'),
-  start: z.string().describe('Start time (ISO datetime)'),
-  end: z.string().describe('End time (ISO datetime)'),
+  start: flexibleDatetimeSchema.describe(
+    'Start time. Accepts "tomorrow at 3pm", "next Monday 10am", or ISO format "2026-02-01T15:00:00Z".',
+  ),
+  end: flexibleDatetimeSchema.describe(
+    'End time. Accepts "tomorrow at 4pm", "in 2 hours", or ISO format "2026-02-01T16:00:00Z".',
+  ),
   timezone: z.string().describe('Timezone (e.g., America/New_York)'),
   description: z.string().optional().describe('Event description'),
   location: z.string().optional().describe('Event location'),
@@ -190,9 +212,10 @@ const createEventInputSchema = z.object({
 const createEventOutputSchema = calendarEventSchema;
 
 type CreateEventInput = z.infer<typeof createEventInputSchema>;
+type CreateEventRawInput = z.input<typeof createEventInputSchema>;
 type CreateEventOutput = z.infer<typeof createEventOutputSchema>;
 
-const createEventTool: ToolDefinition<CreateEventInput, CreateEventOutput> = {
+const createEventTool: ToolDefinition<CreateEventInput, CreateEventOutput, CreateEventRawInput> = {
   id: 'calendar.create_event',
   name: 'CreateEvent',
   description: 'Create a new calendar event.',
@@ -211,11 +234,20 @@ const createEventTool: ToolDefinition<CreateEventInput, CreateEventOutput> = {
     {
       input: {
         title: 'Team Meeting',
+        start: 'tomorrow at 10am',
+        end: 'tomorrow at 11am',
+        timezone: 'America/New_York',
+      },
+      description: 'Create a meeting using natural language',
+    },
+    {
+      input: {
+        title: 'Project Review',
         start: '2024-01-15T10:00:00Z',
         end: '2024-01-15T11:00:00Z',
         timezone: 'America/New_York',
       },
-      description: 'Create a simple meeting',
+      description: 'Create a meeting using ISO format',
     },
   ],
   execute: async (input: CreateEventInput, context: ToolContext): Promise<CreateEventOutput> => {
@@ -231,8 +263,8 @@ const createEventTool: ToolDefinition<CreateEventInput, CreateEventOutput> = {
 const updateEventInputSchema = z.object({
   id: z.string().describe('Event ID to update'),
   title: z.string().optional().describe('New event title'),
-  start: z.string().optional().describe('New start time'),
-  end: z.string().optional().describe('New end time'),
+  start: optionalFlexibleDatetimeSchema.describe('New start time. Accepts "tomorrow at 3pm" or ISO format.'),
+  end: optionalFlexibleDatetimeSchema.describe('New end time. Accepts "tomorrow at 4pm" or ISO format.'),
   description: z.string().optional().describe('New description'),
   location: z.string().optional().describe('New location'),
   allDay: z.boolean().optional().describe('Update all-day status'),
@@ -245,9 +277,10 @@ const updateEventInputSchema = z.object({
 const updateEventOutputSchema = calendarEventSchema;
 
 type UpdateEventInput = z.infer<typeof updateEventInputSchema>;
+type UpdateEventRawInput = z.input<typeof updateEventInputSchema>;
 type UpdateEventOutput = z.infer<typeof updateEventOutputSchema>;
 
-const updateEventTool: ToolDefinition<UpdateEventInput, UpdateEventOutput> = {
+const updateEventTool: ToolDefinition<UpdateEventInput, UpdateEventOutput, UpdateEventRawInput> = {
   id: 'calendar.update_event',
   name: 'UpdateEvent',
   description: 'Update an existing calendar event.',
@@ -314,7 +347,9 @@ const deleteEventTool: ToolDefinition<DeleteEventInput, DeleteEventOutput> = {
 // ============================================================================
 
 const checkBusyInputSchema = z.object({
-  time: z.string().optional().describe('Time to check (ISO datetime). Defaults to now.'),
+  time: optionalFlexibleDatetimeSchema.describe(
+    'Time to check. Accepts "now", "in 2 hours", "tomorrow at 3pm", or ISO format. Defaults to now.',
+  ),
 });
 
 const checkBusyOutputSchema = z.object({
@@ -323,9 +358,10 @@ const checkBusyOutputSchema = z.object({
 });
 
 type CheckBusyInput = z.infer<typeof checkBusyInputSchema>;
+type CheckBusyRawInput = z.input<typeof checkBusyInputSchema>;
 type CheckBusyOutput = z.infer<typeof checkBusyOutputSchema>;
 
-const checkBusyTool: ToolDefinition<CheckBusyInput, CheckBusyOutput> = {
+const checkBusyTool: ToolDefinition<CheckBusyInput, CheckBusyOutput, CheckBusyRawInput> = {
   id: 'calendar.check_busy',
   name: 'CheckBusy',
   description: 'Check if the user is currently busy (in an event).',
@@ -342,6 +378,7 @@ const checkBusyTool: ToolDefinition<CheckBusyInput, CheckBusyOutput> = {
   tags: ['calendar', 'status', 'read'],
   examples: [
     { input: {}, description: 'Check if user is busy now' },
+    { input: { time: 'in 2 hours' }, description: 'Check if user will be busy in 2 hours' },
     { input: { time: '2024-01-15T14:00:00Z' }, description: 'Check if user is busy at a specific time' },
   ],
   execute: async (input: CheckBusyInput, context: ToolContext): Promise<CheckBusyOutput> => {

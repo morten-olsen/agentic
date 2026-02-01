@@ -309,6 +309,7 @@ describe('telegram.handlers', () => {
         type: 'tool_approval' as const,
         status: 'pending' as const,
         prompt: 'Do you want to proceed?',
+        allowFreeform: false,
         toolCall: {
           toolId: 'tool-123',
           toolName: 'send_email',
@@ -335,6 +336,7 @@ describe('telegram.handlers', () => {
         type: 'question' as const,
         status: 'pending' as const,
         prompt: 'Which option?',
+        allowFreeform: false,
         options: [
           { id: 'opt-1', label: 'Option A', isRecommended: true },
           { id: 'opt-2', label: 'Option B', isRecommended: false },

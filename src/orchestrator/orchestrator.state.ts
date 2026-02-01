@@ -65,6 +65,24 @@ const OrchestratorAnnotation = Annotation.Root({
     reducer: (_, update) => update,
     default: () => [],
   }),
+
+  // Turn tracking - counts graph iterations to prevent runaway loops
+  turnCount: Annotation<number>({
+    reducer: (_, update) => update,
+    default: () => 0,
+  }),
+
+  // Maximum turns before asking user to continue (0 = no limit)
+  maxTurns: Annotation<number>({
+    reducer: (_, update) => update,
+    default: () => 20,
+  }),
+
+  // Whether a turn limit interrupt is pending
+  turnLimitReached: Annotation<boolean>({
+    reducer: (_, update) => update,
+    default: () => false,
+  }),
 });
 
 type OrchestratorState = typeof OrchestratorAnnotation.State;

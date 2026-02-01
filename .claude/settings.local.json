@@ -26,7 +26,12 @@
       "Bash(timeout 10 pnpm server:*)",
       "Bash(echo:*)",
       "Bash(pkill:*)",
-      "Bash(timeout 8 pnpm server:*)"
+      "Bash(timeout 8 pnpm server:*)",
+      "Bash(pnpm test:build:*)",
+      "Bash(pnpm conversation:*)",
+      "Bash(pnpm test:conversation:*)",
+      "Bash(npx prettier:*)",
+      "Bash(find:*)"
     ]
   }
 }

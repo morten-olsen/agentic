@@ -148,15 +148,25 @@ const getActiveUserTasks = async (db: Knex): Promise<UserTask[]> => {
 
 const getDueUserTasks = async (db: Knex, beforeDate: Date): Promise<UserTask[]> => {
   const isoDate = beforeDate.toISOString();
+  const dateOnly = isoDate.split('T')[0]; // YYYY-MM-DD
 
   // Get deadline tasks that are due before the specified date
-  const rows = await db<UserTaskRow>('user_tasks')
+  const deadlineRows = await db<UserTaskRow>('user_tasks')
     .where({ trigger_type: 'deadline' })
     .whereIn('status', ['pending', 'active'])
     .whereRaw("json_extract(trigger_config, '$.dueAt') <= ?", [isoDate])
     .orderByRaw("json_extract(trigger_config, '$.dueAt') ASC");
 
-  return rows.map(rowToUserTask);
+  // Get date tasks that are due on or before the specified date
+  const dateRows = await db<UserTaskRow>('user_tasks')
+    .where({ trigger_type: 'date' })
+    .whereIn('status', ['pending', 'active'])
+    .whereRaw("json_extract(trigger_config, '$.date') <= ?", [dateOnly])
+    .orderByRaw("json_extract(trigger_config, '$.date') ASC");
+
+  // Combine and sort
+  const allRows = [...deadlineRows, ...dateRows];
+  return allRows.map(rowToUserTask);
 };
 
 const getUserTasksForProject = async (db: Knex, projectId: string): Promise<UserTask[]> => {

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { parseDateToISO } from '../utils/date-parser.ts';
+
 // ============================================================================
 // Task Triggers (for User Tasks)
 // ============================================================================
@@ -7,6 +9,15 @@ import { z } from 'zod';
 const deadlineTriggerSchema = z.object({
   type: z.literal('deadline'),
   dueAt: z.string().datetime(),
+});
+
+/**
+ * Simple date trigger - for tasks that should be done on a specific date.
+ * More lenient than deadline - accepts various date formats.
+ */
+const dateTriggerSchema = z.object({
+  type: z.literal('date'),
+  date: z.string().describe('Date in YYYY-MM-DD format or ISO datetime'),
 });
 
 const recurringTimeTriggerSchema = z.object({
@@ -39,6 +50,7 @@ const conditionalTriggerSchema = z.object({
 });
 
 const taskTriggerSchema = z.discriminatedUnion('type', [
+  dateTriggerSchema,
   deadlineTriggerSchema,
   recurringTimeTriggerSchema,
   recurringCompletionTriggerSchema,
@@ -49,6 +61,59 @@ const taskTriggerSchema = z.discriminatedUnion('type', [
 
 type TaskTrigger = z.infer<typeof taskTriggerSchema>;
 type TaskTriggerType = TaskTrigger['type'];
+
+// ============================================================================
+// Flexible Trigger Input (for tool input - accepts strings or objects)
+// ============================================================================
+
+/**
+ * Flexible trigger input schema that accepts either:
+ * - A string (natural language or ISO format) - converted to a deadline trigger
+ * - A structured trigger object (for advanced use cases)
+ *
+ * Examples of string input:
+ * - "in 5 minutes"
+ * - "tomorrow at 9am"
+ * - "next Monday"
+ * - "2026-02-01T21:50:00Z"
+ * - "2026-02-01"
+ */
+const flexibleTriggerInputSchema = z
+  .union([
+    z
+      .string()
+      .describe(
+        'When the task should trigger - accepts natural language like "in 5 minutes", "tomorrow at 9am", or ISO format "2026-02-01T10:00:00Z"',
+      ),
+    taskTriggerSchema.describe('Structured trigger for advanced scheduling (recurring, conditional, etc.)'),
+  ])
+  .transform((val, ctx): TaskTrigger => {
+    // If it's already a structured trigger, pass it through
+    if (typeof val === 'object') {
+      return val;
+    }
+
+    // Parse string input into a deadline trigger
+    const parsed = parseDateToISO(val);
+    if (!parsed) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          `Could not parse trigger time: "${val}". Try formats like:\n` +
+          `  - "in 5 minutes"\n` +
+          `  - "tomorrow at 9am"\n` +
+          `  - "next Monday"\n` +
+          `  - "2026-02-01T10:00:00Z"\n` +
+          `Or use a structured trigger: { type: "date", date: "2026-02-01" }`,
+      });
+      return z.NEVER;
+    }
+
+    // Convert to a deadline trigger (includes time, so deadline is more appropriate than date)
+    return { type: 'deadline', dueAt: parsed };
+  });
+
+type FlexibleTriggerInput = z.input<typeof flexibleTriggerInputSchema>;
 
 // ============================================================================
 // User Task Status
@@ -338,6 +403,7 @@ type PendingTaskContext = z.infer<typeof pendingTaskContextSchema>;
 export type {
   TaskTrigger,
   TaskTriggerType,
+  FlexibleTriggerInput,
   UserTaskStatus,
   UserTask,
   CreateUserTaskInput,
@@ -360,6 +426,7 @@ export type {
 
 export {
   // Trigger schemas
+  dateTriggerSchema,
   deadlineTriggerSchema,
   recurringTimeTriggerSchema,
   recurringCompletionTriggerSchema,
@@ -367,6 +434,7 @@ export {
   deferredTriggerSchema,
   conditionalTriggerSchema,
   taskTriggerSchema,
+  flexibleTriggerInputSchema,
   // User task schemas
   userTaskStatusSchema,
   userTaskSchema,

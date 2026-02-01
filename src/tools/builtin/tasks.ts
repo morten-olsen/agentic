@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { ToolDefinition, ToolContext, ToolRegistry } from '../tools.ts';
 import {
   TaskService,
-  taskTriggerSchema,
+  flexibleTriggerInputSchema,
   userTaskSchema,
   userTaskStatusSchema,
   delegatedTaskSchema,
@@ -17,7 +17,9 @@ import {
 
 const createUserTaskInputSchema = z.object({
   description: z.string().min(1).describe('Task description'),
-  trigger: taskTriggerSchema.describe('When the task should be done'),
+  trigger: flexibleTriggerInputSchema.describe(
+    'When the task should trigger. Accepts natural language like "in 5 minutes", "tomorrow at 9am", or ISO format "2026-02-01T10:00:00Z". For advanced scheduling, use structured objects.',
+  ),
   relatedProjects: z.array(z.string()).optional().describe('Related project IDs'),
   relatedContacts: z.array(z.string()).optional().describe('Related contact IDs'),
   notes: z.string().optional().describe('Additional notes'),
@@ -27,9 +29,10 @@ const createUserTaskInputSchema = z.object({
 const createUserTaskOutputSchema = userTaskSchema;
 
 type CreateUserTaskInput = z.infer<typeof createUserTaskInputSchema>;
+type CreateUserTaskRawInput = z.input<typeof createUserTaskInputSchema>;
 type CreateUserTaskOutput = z.infer<typeof createUserTaskOutputSchema>;
 
-const createUserTaskTool: ToolDefinition<CreateUserTaskInput, CreateUserTaskOutput> = {
+const createUserTaskTool: ToolDefinition<CreateUserTaskInput, CreateUserTaskOutput, CreateUserTaskRawInput> = {
   id: 'tasks.create_user_task',
   name: 'CreateUserTask',
   description:
@@ -48,17 +51,31 @@ const createUserTaskTool: ToolDefinition<CreateUserTaskInput, CreateUserTaskOutp
   examples: [
     {
       input: {
-        description: 'Submit expense report',
-        trigger: { type: 'deadline', dueAt: '2024-03-15T17:00:00Z' },
+        description: 'Go to bed',
+        trigger: 'in 5 minutes',
       },
-      description: 'Create a deadline task',
+      description: 'Create a reminder using natural language',
+    },
+    {
+      input: {
+        description: 'Watch the AMP video',
+        trigger: 'tomorrow at 9am',
+      },
+      description: 'Create a task for tomorrow morning',
+    },
+    {
+      input: {
+        description: 'Submit expense report',
+        trigger: '2024-03-15T17:00:00Z',
+      },
+      description: 'Create a task with ISO datetime',
     },
     {
       input: {
         description: 'Weekly team update',
         trigger: { type: 'recurring_time', schedule: '0 9 * * 1' },
       },
-      description: 'Create a recurring task',
+      description: 'Create a recurring task (structured format)',
     },
   ],
   execute: async (input: CreateUserTaskInput, context: ToolContext): Promise<CreateUserTaskOutput> => {

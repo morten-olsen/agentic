@@ -24,12 +24,57 @@ type GraphConfig = {
 };
 
 /**
+ * Creates the turn counter node that tracks iterations and triggers turn limit interrupts.
+ */
+const createTurnCounterNode = () => {
+  return async (state: OrchestratorState): Promise<Partial<OrchestratorState>> => {
+    const newTurnCount = state.turnCount + 1;
+    const maxTurns = state.maxTurns || 20;
+
+    // Check if we've hit the turn limit (when maxTurns > 0)
+    if (maxTurns > 0 && newTurnCount >= maxTurns) {
+      return {
+        turnCount: newTurnCount,
+        turnLimitReached: true,
+        interruptRequired: true,
+      };
+    }
+
+    return {
+      turnCount: newTurnCount,
+      turnLimitReached: false,
+    };
+  };
+};
+
+/**
  * Creates the router node that calls the LLM.
  */
 const createRouterNode = (llm: ChatOpenAI, systemPrompt: string, tools: DynamicStructuredTool[]) => {
   const llmWithTools = llm.bindTools(tools);
 
   return async (state: OrchestratorState): Promise<Partial<OrchestratorState>> => {
+    // Check if we're resuming after an interrupt approval
+    // If we have approved tool calls AND the last message is an AIMessage with tool calls
+    // (not a ToolMessage result), skip the LLM call and let the existing tool calls proceed
+    if (state.approvedToolCalls && state.approvedToolCalls.length > 0) {
+      const lastMessage = state.messages[state.messages.length - 1];
+      // Only skip if last message is an AIMessage with pending tool calls
+      // Don't skip if it's a ToolMessage (tool result) - we need LLM to respond to results
+      if (
+        lastMessage &&
+        '_getType' in lastMessage &&
+        (lastMessage as AIMessage)._getType() === 'ai' &&
+        'tool_calls' in lastMessage
+      ) {
+        const aiMessage = lastMessage as AIMessage;
+        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+          // Resuming after interrupt - don't call LLM again
+          return {};
+        }
+      }
+    }
+
     // Build messages array with system prompt
     const systemMessage = {
       role: 'system' as const,
@@ -46,6 +91,16 @@ const createRouterNode = (llm: ChatOpenAI, systemPrompt: string, tools: DynamicS
       messages: [response],
     };
   };
+};
+
+/**
+ * Determines whether to continue after turn counter.
+ */
+const routeAfterTurnCounter = (state: OrchestratorState): 'router' | 'turn_limit_interrupt' => {
+  if (state.turnLimitReached) {
+    return 'turn_limit_interrupt';
+  }
+  return 'router';
 };
 
 /**
@@ -94,6 +149,17 @@ const interruptNode = async (_state: OrchestratorState): Promise<Partial<Orchest
   return {
     currentInterrupt: null, // Will be populated by orchestrator service
   };
+};
+
+/**
+ * Turn limit interrupt node - signals that the turn limit has been reached.
+ * The orchestrator service will create the interrupt asking user to continue.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const turnLimitInterruptNode = async (_state: OrchestratorState): Promise<Partial<OrchestratorState>> => {
+  // This node marks that the turn limit was reached
+  // The orchestrator service will detect turnLimitReached and create the interrupt
+  return {};
 };
 
 /**
@@ -150,9 +216,9 @@ const createFilteredToolNode = (tools: DynamicStructuredTool[]) => {
  * Creates the LangGraph state machine for the orchestrator.
  *
  * Graph flow:
- * START → memory_retriever → router → risk_gate → [interrupt | tools]
- *                             ↑                          |
- *                             |__________________________↓
+ * START → memory_retriever → turn_counter → [turn_limit_interrupt | router] → risk_gate → [interrupt | tools]
+ *                                                    ↑                                           |
+ *                                                    |___________________________________________↓
  */
 const createOrchestratorGraph = (
   llm: ChatOpenAI,
@@ -164,6 +230,9 @@ const createOrchestratorGraph = (
 ) => {
   // Create the filtered tool node
   const toolNode = createFilteredToolNode(tools);
+
+  // Create the turn counter node
+  const turnCounterNode = createTurnCounterNode();
 
   // Create the router node
   const routerNode = createRouterNode(llm, systemPrompt, tools);
@@ -179,12 +248,18 @@ const createOrchestratorGraph = (
   // Build the graph
   const graph = new StateGraph(OrchestratorAnnotation)
     .addNode('memory_retriever', memoryNode)
+    .addNode('turn_counter', turnCounterNode)
     .addNode('router', routerNode)
     .addNode('risk_gate', riskGateNode)
     .addNode('tools', toolNode)
     .addNode('interrupt', interruptNode)
+    .addNode('turn_limit_interrupt', turnLimitInterruptNode)
     .addEdge(START, 'memory_retriever')
-    .addEdge('memory_retriever', 'router')
+    .addEdge('memory_retriever', 'turn_counter')
+    .addConditionalEdges('turn_counter', routeAfterTurnCounter, {
+      router: 'router',
+      turn_limit_interrupt: 'turn_limit_interrupt',
+    })
     .addConditionalEdges('router', routeAfterRouter, {
       risk_gate: 'risk_gate',
       end: END,
@@ -194,8 +269,9 @@ const createOrchestratorGraph = (
       interrupt: 'interrupt',
       router: 'router',
     })
-    .addEdge('tools', 'router')
-    .addEdge('interrupt', END); // Interrupt halts graph execution
+    .addEdge('tools', 'turn_counter') // After tools, go back through turn counter
+    .addEdge('interrupt', END) // Interrupt halts graph execution
+    .addEdge('turn_limit_interrupt', END); // Turn limit interrupt also halts
 
   return graph;
 };
@@ -203,9 +279,12 @@ const createOrchestratorGraph = (
 export type { GraphConfig };
 export {
   createOrchestratorGraph,
+  createTurnCounterNode,
   createRouterNode,
+  routeAfterTurnCounter,
   routeAfterRouter,
   routeAfterRiskGate,
   createFilteredToolNode,
   interruptNode,
+  turnLimitInterruptNode,
 };

@@ -539,6 +539,7 @@ export {
   deferredTriggerSchema,
   conditionalTriggerSchema,
   taskTriggerSchema,
+  flexibleTriggerInputSchema,
   // User task schemas
   userTaskStatusSchema,
   userTaskSchema,

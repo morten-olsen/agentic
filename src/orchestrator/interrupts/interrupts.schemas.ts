@@ -5,7 +5,7 @@ import { riskLevelSchema } from '../../tools/tools.schemas.ts';
 /**
  * Types of interrupts.
  */
-const interruptTypeSchema = z.enum(['tool_approval', 'question', 'confirmation', 'error_recovery']);
+const interruptTypeSchema = z.enum(['tool_approval', 'question', 'confirmation', 'error_recovery', 'turn_limit']);
 
 type InterruptType = z.infer<typeof interruptTypeSchema>;
 

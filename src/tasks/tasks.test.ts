@@ -1,9 +1,10 @@
-import { describe, it, beforeEach, afterEach, expect } from 'vitest';
+import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 
 import { Services } from '../services/services.ts';
 import { DatabaseService, createDatabaseService } from '../database/database.ts';
 
 import { TaskService, TaskNotFoundError, TaskAlreadyCompletedError, InvalidTaskStateError } from './tasks.ts';
+import { flexibleTriggerInputSchema } from './tasks.schemas.ts';
 import type { WaitingFor } from './tasks.ts';
 
 // ============================================================================
@@ -17,6 +18,111 @@ const createTestServices = async (): Promise<Services> => {
   await db.migrate();
   return services;
 };
+
+// ============================================================================
+// Flexible Trigger Input Schema Tests
+// ============================================================================
+
+describe('flexibleTriggerInputSchema', () => {
+  const referenceDate = new Date('2026-02-01T12:00:00Z');
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(referenceDate);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('accepts natural language "in 5 minutes" and converts to deadline trigger', () => {
+    const result = flexibleTriggerInputSchema.safeParse('in 5 minutes');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('deadline');
+      if (result.data.type === 'deadline') {
+        // Should be 5 minutes after reference date
+        const dueDate = new Date(result.data.dueAt);
+        expect(dueDate.getTime()).toBe(referenceDate.getTime() + 5 * 60 * 1000);
+      }
+    }
+  });
+
+  it('accepts natural language "tomorrow at 9am" and converts to deadline trigger', () => {
+    const result = flexibleTriggerInputSchema.safeParse('tomorrow at 9am');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('deadline');
+      if (result.data.type === 'deadline') {
+        const dueDate = new Date(result.data.dueAt);
+        expect(dueDate.getDate()).toBe(2); // Feb 2
+        expect(dueDate.getHours()).toBe(9);
+      }
+    }
+  });
+
+  it('accepts ISO datetime string and converts to deadline trigger', () => {
+    const result = flexibleTriggerInputSchema.safeParse('2026-02-15T10:00:00Z');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('deadline');
+      if (result.data.type === 'deadline') {
+        expect(result.data.dueAt).toBe('2026-02-15T10:00:00.000Z');
+      }
+    }
+  });
+
+  it('accepts structured date trigger object', () => {
+    const result = flexibleTriggerInputSchema.safeParse({
+      type: 'date',
+      date: '2026-02-15',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('date');
+      if (result.data.type === 'date') {
+        expect(result.data.date).toBe('2026-02-15');
+      }
+    }
+  });
+
+  it('accepts structured deadline trigger object', () => {
+    const result = flexibleTriggerInputSchema.safeParse({
+      type: 'deadline',
+      dueAt: '2026-02-15T10:00:00Z',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('deadline');
+      if (result.data.type === 'deadline') {
+        expect(result.data.dueAt).toBe('2026-02-15T10:00:00Z');
+      }
+    }
+  });
+
+  it('accepts structured recurring_time trigger object', () => {
+    const result = flexibleTriggerInputSchema.safeParse({
+      type: 'recurring_time',
+      schedule: '0 9 * * 1',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('recurring_time');
+      if (result.data.type === 'recurring_time') {
+        expect(result.data.schedule).toBe('0 9 * * 1');
+      }
+    }
+  });
+
+  it('fails with helpful error for invalid string input', () => {
+    const result = flexibleTriggerInputSchema.safeParse('not a date');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toContain('Could not parse');
+      expect(result.error.issues[0].message).toContain('in 5 minutes');
+    }
+  });
+});
 
 // ============================================================================
 // User Task Tests
@@ -45,6 +151,21 @@ describe('TaskService - User Tasks', () => {
       expect(task.id).toBeDefined();
       expect(task.description).toBe('Submit expense report');
       expect(task.trigger.type).toBe('deadline');
+      expect(task.status).toBe('pending');
+    });
+
+    it('creates a simple date task', async () => {
+      const task = await taskService.createUserTask({
+        description: 'Watch the AMP video',
+        trigger: { type: 'date', date: '2026-02-02' },
+      });
+
+      expect(task.id).toBeDefined();
+      expect(task.description).toBe('Watch the AMP video');
+      expect(task.trigger.type).toBe('date');
+      if (task.trigger.type === 'date') {
+        expect(task.trigger.date).toBe('2026-02-02');
+      }
       expect(task.status).toBe('pending');
     });
 

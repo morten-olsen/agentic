@@ -148,8 +148,12 @@ const createRiskGateNode = (toolRegistry: ToolRegistry, approvalLevels: RiskLeve
       };
     }
 
-    // Evaluate all tool calls
-    const result = evaluateRiskGate(toolCalls, toolRegistry, approvalLevels);
+    // Filter out already-approved tools before evaluating
+    // This prevents re-prompting for tools the user already approved
+    const toolsToEvaluate = toolCalls.filter((tc) => !approvedNames.has(tc.name));
+
+    // Evaluate only the non-approved tool calls
+    const result = evaluateRiskGate(toolsToEvaluate, toolRegistry, approvalLevels);
 
     // Merge with any existing approved calls
     const mergedApproved = [...existingApproved];

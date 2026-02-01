@@ -7,8 +7,12 @@ import type { RiskProfile, ToolContext } from './tools.schemas.ts';
  *
  * @template TInput - The input type (inferred from inputSchema)
  * @template TOutput - The output type (inferred from outputSchema)
+ * @template TRawInput - The raw input type before transforms (defaults to TInput)
+ *
+ * Note: TRawInput is used for examples to allow providing input in its raw form
+ * (before schema transforms). For schemas without transforms, TRawInput = TInput.
  */
-type ToolDefinition<TInput = unknown, TOutput = unknown> = {
+type ToolDefinition<TInput = unknown, TOutput = unknown, TRawInput = TInput> = {
   /** Unique identifier for the tool */
   id: string;
   /** Human-readable name */
@@ -27,14 +31,18 @@ type ToolDefinition<TInput = unknown, TOutput = unknown> = {
   execute: (input: TInput, context: ToolContext) => Promise<TOutput>;
   /** Tags for discovery and filtering */
   tags: string[];
-  /** Usage examples */
-  examples: { input: TInput; description: string }[];
+  /** Usage examples - uses raw input type before transforms */
+  examples: { input: TRawInput; description: string }[];
 };
 
 /**
  * A registered tool with metadata.
  */
-type RegisteredTool<TInput = unknown, TOutput = unknown> = ToolDefinition<TInput, TOutput> & {
+type RegisteredTool<TInput = unknown, TOutput = unknown, TRawInput = TInput> = ToolDefinition<
+  TInput,
+  TOutput,
+  TRawInput
+> & {
   /** When the tool was registered */
   registeredAt: Date;
 };

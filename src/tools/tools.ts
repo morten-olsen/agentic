@@ -41,13 +41,14 @@ class ToolRegistry {
 
   /**
    * Registers a tool.
+   * The third type parameter TRawInput is for examples (raw input before transforms).
    */
-  register = <TInput, TOutput>(tool: ToolDefinition<TInput, TOutput>): void => {
+  register = <TInput, TOutput, TRawInput = TInput>(tool: ToolDefinition<TInput, TOutput, TRawInput>): void => {
     if (this.#tools.has(tool.id)) {
       throw new ToolAlreadyRegisteredError(tool.id);
     }
 
-    const registered: RegisteredTool<TInput, TOutput> = {
+    const registered: RegisteredTool<TInput, TOutput, TRawInput> = {
       ...tool,
       registeredAt: new Date(),
     };
