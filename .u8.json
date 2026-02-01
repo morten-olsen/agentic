@@ -1,0 +1,25 @@
+{
+  "values": {
+    "monoRepo": false,
+    "packageVersion": "1.0.0"
+  },
+  "entries": [
+    {
+      "timestamp": "2026-02-01T12:07:16.637Z",
+      "template": "pkg",
+      "values": {
+        "monoRepo": false,
+        "packageName": "@morten-olsen/glados",
+        "packageVersion": "1.0.0"
+      }
+    },
+    {
+      "timestamp": "2026-02-01T12:07:25.426Z",
+      "template": "eslint",
+      "values": {
+        "monoRepo": false,
+        "packageVersion": "1.0.0"
+      }
+    }
+  ]
+}

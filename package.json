@@ -1,0 +1,63 @@
+{
+  "type": "module",
+  "main": "dist/exports.js",
+  "bin": {
+    "glados": "./src/cli/cli.ts"
+  },
+  "scripts": {
+    "test:lint": "eslint",
+    "build": "tsc --build",
+    "test:unit": "vitest --run --passWithNoTests",
+    "test": "pnpm run \"/^test:/\"",
+    "cli": "node --experimental-strip-types src/cli/cli.ts",
+    "telegram": "node --experimental-strip-types src/clients/telegram/telegram.cli.ts",
+    "proactive": "node --experimental-strip-types src/proactive/proactive.cli.ts"
+  },
+  "packageManager": "pnpm@10.6.0",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./dist/exports.js"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "3.3.3",
+    "@eslint/js": "9.39.2",
+    "@pnpm/find-workspace-packages": "6.0.9",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/convict": "^6.1.6",
+    "@types/node": "25.1.0",
+    "@types/uuid": "^11.0.0",
+    "@vitest/coverage-v8": "4.0.18",
+    "eslint": "9.39.2",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-import": "2.32.0",
+    "eslint-plugin-prettier": "5.5.5",
+    "msw": "^2.12.7",
+    "prettier": "3.8.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.54.0",
+    "vitest": "4.0.18"
+  },
+  "name": "@morten-olsen/glados",
+  "version": "1.0.0",
+  "dependencies": {
+    "@langchain/core": "^1.1.18",
+    "@langchain/langgraph": "^1.1.2",
+    "@langchain/langgraph-checkpoint": "^1.0.0",
+    "@langchain/openai": "^1.2.4",
+    "better-sqlite3": "^12.6.2",
+    "convict": "^6.2.4",
+    "grammy": "^1.21.1",
+    "knex": "^3.1.0",
+    "langchain": "^1.2.16",
+    "uuid": "^13.0.0",
+    "zod": "^4.3.6",
+    "zod-to-json-schema": "^3.25.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  }
+}

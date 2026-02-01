@@ -1,0 +1,9 @@
+/node_modules/
+/dist/
+/coverage/
+/.env
+/glados.db
+*.db
+
+# Local config (contains secrets)
+/config/local.json

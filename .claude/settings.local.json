@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm rebuild:*)",
+      "Bash(pnpm test:unit:*)",
+      "Bash(pnpm test:*)",
+      "Bash(npx eslint --fix .)",
+      "Bash(pnpm ls:*)",
+      "Bash(pnpm test:lint:*)",
+      "Bash(npx eslint:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm list:*)",
+      "Bash(pnpm eslint:*)",
+      "Bash(pnpm install:*)",
+      "Bash(ls:*)",
+      "Bash(node:*)",
+      "Bash(tree:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

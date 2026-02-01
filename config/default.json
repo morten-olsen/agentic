@@ -1,0 +1,15 @@
+{
+  "database": {
+    "path": "./glados.db"
+  },
+  "llm": {
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.1,
+    "maxTokens": 4096
+  },
+  "personality": {
+    "name": "GLaDOS",
+    "role": "personal assistant"
+  }
+}

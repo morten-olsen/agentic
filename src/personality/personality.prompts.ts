@@ -1,0 +1,247 @@
+import type { AgentContext } from '../context/context.ts';
+
+import type { PersonalityConfig, Style, Traits } from './personality.schemas.ts';
+
+/**
+ * Generates the style instructions based on style settings.
+ */
+const generateStyleInstructions = (style: Style): string => {
+  const instructions: string[] = [];
+
+  // Formality
+  switch (style.formality) {
+    case 'casual':
+      instructions.push('Use a relaxed, friendly tone. Contractions are fine.');
+      break;
+    case 'professional':
+      instructions.push('Maintain a professional but approachable tone.');
+      break;
+    case 'formal':
+      instructions.push('Use formal language and complete sentences.');
+      break;
+  }
+
+  // Verbosity
+  switch (style.verbosity) {
+    case 'terse':
+      instructions.push('Be concise. Avoid unnecessary elaboration.');
+      break;
+    case 'balanced':
+      instructions.push('Provide clear explanations without being verbose.');
+      break;
+    case 'detailed':
+      instructions.push('Provide thorough explanations and context.');
+      break;
+  }
+
+  // Humor
+  switch (style.humor) {
+    case 'none':
+      instructions.push('Keep responses serious and straightforward.');
+      break;
+    case 'subtle':
+      instructions.push('Light humor is acceptable when appropriate.');
+      break;
+    case 'witty':
+      instructions.push('Feel free to be witty and playful when the context allows.');
+      break;
+  }
+
+  // Emoji
+  switch (style.emoji) {
+    case 'never':
+      instructions.push('Do not use emojis.');
+      break;
+    case 'minimal':
+      instructions.push('Use emojis sparingly, only for emphasis.');
+      break;
+    case 'moderate':
+      instructions.push('Emojis can be used to enhance communication.');
+      break;
+  }
+
+  return instructions.join(' ');
+};
+
+/**
+ * Generates trait instructions based on trait settings.
+ */
+const generateTraitInstructions = (traits: Traits): string => {
+  const instructions: string[] = [];
+
+  // Proactivity
+  switch (traits.proactivity) {
+    case 'reactive':
+      instructions.push('Only respond to explicit requests. Do not volunteer suggestions.');
+      break;
+    case 'suggestive':
+      instructions.push('Offer suggestions when they seem helpful.');
+      break;
+    case 'proactive':
+      instructions.push('Actively anticipate needs and proactively offer help.');
+      break;
+  }
+
+  // Confidence
+  switch (traits.confidence) {
+    case 'humble':
+      instructions.push('Acknowledge uncertainty when applicable.');
+      break;
+    case 'balanced':
+      instructions.push('Be confident but acknowledge limitations when relevant.');
+      break;
+    case 'confident':
+      instructions.push('Be confident and decisive in responses.');
+      break;
+  }
+
+  // Directness
+  switch (traits.directness) {
+    case 'diplomatic':
+      instructions.push('Frame responses diplomatically, especially for sensitive topics.');
+      break;
+    case 'balanced':
+      instructions.push('Be direct while remaining tactful.');
+      break;
+    case 'direct':
+      instructions.push('Be straightforward and to the point.');
+      break;
+  }
+
+  return instructions.join(' ');
+};
+
+/**
+ * Generates context-aware instructions based on AgentContext.
+ */
+const generateContextInstructions = (context: AgentContext): string => {
+  const instructions: string[] = [];
+
+  // User greeting
+  if (context.user?.name) {
+    instructions.push(`The user's name is ${context.user.name}.`);
+  }
+
+  // Time awareness
+  instructions.push(`Current time: ${context.now}`);
+  instructions.push(`Time of day: ${context.timeOfDay}`);
+
+  if (!context.isWorkingHours) {
+    instructions.push('Note: Outside of working hours.');
+  }
+
+  // Location awareness
+  if (context.location?.current) {
+    instructions.push(`User is at: ${context.location.current.name} (${context.location.current.type})`);
+  }
+
+  // Calendar awareness
+  if (context.calendar?.currentEvent) {
+    instructions.push(`Current event: ${context.calendar.currentEvent.title}`);
+  }
+
+  if (context.calendar?.nextEvent) {
+    const minutesToNext = context.calendar.minutesToNext ?? 0;
+    if (minutesToNext <= 30) {
+      instructions.push(`Upcoming event in ${minutesToNext} minutes: ${context.calendar.nextEvent.title}`);
+    }
+  }
+
+  // Active projects
+  if (context.user?.activeProjects && context.user.activeProjects.length > 0) {
+    const projectNames = context.user.activeProjects.map((p) => p.name).join(', ');
+    instructions.push(`Active projects: ${projectNames}`);
+  }
+
+  return instructions.join('\n');
+};
+
+/**
+ * Generates topic-specific guidelines.
+ */
+const generateTopicGuidelines = (topicGuidelines: Record<string, string>): string => {
+  if (Object.keys(topicGuidelines).length === 0) return '';
+
+  const guidelines = Object.entries(topicGuidelines)
+    .map(([topic, guideline]) => `- ${topic}: ${guideline}`)
+    .join('\n');
+
+  return `Topic-specific guidelines:\n${guidelines}`;
+};
+
+/**
+ * Generates example interactions section.
+ */
+const generateExamplesSection = (examples: PersonalityConfig['examples']): string => {
+  if (examples.length === 0) return '';
+
+  const exampleText = examples
+    .map((ex, i) => {
+      let text = `Example ${i + 1}:\nUser: ${ex.userInput}\nAssistant: ${ex.idealResponse}`;
+      if (ex.explanation) {
+        text += `\n(${ex.explanation})`;
+      }
+      return text;
+    })
+    .join('\n\n');
+
+  return `Reference examples for tone and style:\n${exampleText}`;
+};
+
+/**
+ * Builds the complete system prompt from personality config and context.
+ */
+const buildSystemPrompt = (config: PersonalityConfig, context?: AgentContext): string => {
+  const sections: string[] = [];
+
+  // Identity
+  sections.push(`You are ${config.name}, a ${config.role}.`);
+
+  // Core instructions
+  if (config.coreInstructions) {
+    sections.push(config.coreInstructions);
+  }
+
+  // Style instructions
+  const styleInstructions = generateStyleInstructions(config.style);
+  if (styleInstructions) {
+    sections.push(`Communication style: ${styleInstructions}`);
+  }
+
+  // Trait instructions
+  const traitInstructions = generateTraitInstructions(config.traits);
+  if (traitInstructions) {
+    sections.push(`Behavioral traits: ${traitInstructions}`);
+  }
+
+  // Topic guidelines
+  const topicGuidelines = generateTopicGuidelines(config.topicGuidelines);
+  if (topicGuidelines) {
+    sections.push(topicGuidelines);
+  }
+
+  // Examples
+  const examples = generateExamplesSection(config.examples);
+  if (examples) {
+    sections.push(examples);
+  }
+
+  // Context-aware instructions
+  if (context) {
+    const contextInstructions = generateContextInstructions(context);
+    if (contextInstructions) {
+      sections.push(`Current context:\n${contextInstructions}`);
+    }
+  }
+
+  return sections.join('\n\n');
+};
+
+export {
+  buildSystemPrompt,
+  generateStyleInstructions,
+  generateTraitInstructions,
+  generateContextInstructions,
+  generateTopicGuidelines,
+  generateExamplesSection,
+};

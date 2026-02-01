@@ -1,0 +1,393 @@
+import { Bot } from 'grammy';
+import type { Context } from 'grammy';
+import type { Knex } from 'knex';
+
+import type { Services } from '../../services/services.ts';
+import { DatabaseService } from '../../database/database.ts';
+import { OrchestratorService } from '../../orchestrator/orchestrator.ts';
+import { PersonalityService } from '../../personality/personality.ts';
+import type { Config } from '../../config/config.ts';
+
+import type { TelegramConfig } from './telegram.schemas.ts';
+import { telegramConfigSchema } from './telegram.schemas.ts';
+import { createTelegramChat, getTelegramChat, updateLastActivity, deleteTelegramChat } from './telegram.store.ts';
+import {
+  sendLongMessage,
+  formatInterruptMessage,
+  parseCallbackData,
+  createWelcomeMessage,
+  createHelpMessage,
+  createUnauthorizedMessage,
+} from './telegram.handlers.ts';
+
+/**
+ * Error thrown when the Telegram client is not configured.
+ */
+class TelegramNotConfiguredError extends Error {
+  readonly name = 'TelegramNotConfiguredError';
+
+  constructor() {
+    super('Telegram client is not configured. Set GLADOS_TELEGRAM_BOT_TOKEN and GLADOS_TELEGRAM_OWNER_ID.');
+  }
+}
+
+/**
+ * Telegram client service for GLaDOS.
+ */
+class TelegramClientService {
+  #services: Services;
+  #config: TelegramConfig | null = null;
+  #bot: Bot | null = null;
+  #orchestrator: OrchestratorService | null = null;
+  #assistantName = 'GLaDOS';
+  #pendingInterrupts = new Map<number, string>(); // chatId -> interruptId
+
+  constructor(services: Services) {
+    this.#services = services;
+  }
+
+  /**
+   * Gets the knex instance from the database service.
+   */
+  #db = (): Knex => {
+    return this.#services.get(DatabaseService).knex;
+  };
+
+  /**
+   * Configures the Telegram client.
+   */
+  configure = async (config: TelegramConfig, appConfig: Config): Promise<void> => {
+    this.#config = telegramConfigSchema.parse(config);
+
+    // Load personality name
+    const personality = this.#services.get(PersonalityService);
+    const personalityConfig = await personality.getConfig();
+    this.#assistantName = personalityConfig.name;
+
+    // Create orchestrator
+    this.#orchestrator = new OrchestratorService(this.#services);
+    this.#orchestrator.configure({
+      llm: {
+        baseUrl: appConfig.llm.baseUrl,
+        apiKey: appConfig.llm.apiKey,
+        model: appConfig.llm.model,
+        temperature: appConfig.llm.temperature,
+        maxTokens: appConfig.llm.maxTokens,
+      },
+    });
+
+    // Create bot
+    this.#bot = new Bot(this.#config.botToken);
+    this.#setupHandlers();
+  };
+
+  /**
+   * Gets the configured owner ID.
+   */
+  get ownerId(): number {
+    return this.#config?.ownerId ?? 0;
+  }
+
+  /**
+   * Checks if a user is authorized.
+   */
+  #isAuthorized = (userId: number): boolean => {
+    return userId === this.#config?.ownerId;
+  };
+
+  /**
+   * Sets up bot handlers.
+   */
+  #setupHandlers = (): void => {
+    if (!this.#bot) return;
+
+    // Authorization middleware
+    this.#bot.use(async (ctx, next) => {
+      const userId = ctx.from?.id;
+      if (!userId || !this.#isAuthorized(userId)) {
+        if (ctx.message) {
+          await ctx.reply(createUnauthorizedMessage(), { parse_mode: 'Markdown' });
+        }
+        return;
+      }
+      await next();
+    });
+
+    // Command handlers
+    this.#bot.command('start', this.#handleStart);
+    this.#bot.command('new', this.#handleNew);
+    this.#bot.command('help', this.#handleHelp);
+
+    // Message handler
+    this.#bot.on('message:text', this.#handleMessage);
+
+    // Callback query handler (for inline keyboard responses)
+    this.#bot.on('callback_query:data', this.#handleCallback);
+
+    // Error handler
+    this.#bot.catch((err) => {
+      console.error('Telegram bot error:', err);
+    });
+  };
+
+  /**
+   * Handles the /start command.
+   */
+  #handleStart = async (ctx: Context): Promise<void> => {
+    await ctx.reply(createWelcomeMessage(this.#assistantName), { parse_mode: 'Markdown' });
+
+    // Ensure a conversation exists
+    const chatId = ctx.chat?.id;
+    const userId = ctx.from?.id;
+    if (chatId && userId) {
+      await this.#getOrCreateConversation(chatId, userId);
+    }
+  };
+
+  /**
+   * Handles the /new command.
+   */
+  #handleNew = async (ctx: Context): Promise<void> => {
+    const chatId = ctx.chat?.id;
+    const userId = ctx.from?.id;
+
+    if (!chatId || !userId) return;
+
+    // Delete existing mapping if any
+    await deleteTelegramChat(this.#db(), chatId);
+
+    // Clear any pending interrupts
+    this.#pendingInterrupts.delete(chatId);
+
+    // Create new conversation
+    await this.#getOrCreateConversation(chatId, userId);
+
+    await ctx.reply('✨ Started a new conversation. What would you like to talk about?');
+  };
+
+  /**
+   * Handles the /help command.
+   */
+  #handleHelp = async (ctx: Context): Promise<void> => {
+    await ctx.reply(createHelpMessage(), { parse_mode: 'Markdown' });
+  };
+
+  /**
+   * Handles incoming text messages.
+   */
+  #handleMessage = async (ctx: Context): Promise<void> => {
+    const chatId = ctx.chat?.id;
+    const userId = ctx.from?.id;
+    const messageText = ctx.message?.text;
+
+    if (!chatId || !userId || !messageText || !this.#orchestrator) return;
+
+    // Get or create conversation
+    const conversationId = await this.#getOrCreateConversation(chatId, userId);
+
+    // Show typing indicator
+    await ctx.replyWithChatAction('typing');
+
+    try {
+      let responseBuffer = '';
+
+      for await (const chunk of this.#orchestrator.chat(conversationId, messageText)) {
+        switch (chunk.type) {
+          case 'token':
+            responseBuffer += chunk.content;
+            break;
+
+          case 'tool_start':
+            // Refresh typing indicator
+            await ctx.replyWithChatAction('typing');
+            break;
+
+          case 'interrupt': {
+            // Store pending interrupt
+            this.#pendingInterrupts.set(chatId, chunk.interrupt.id);
+
+            // Send interrupt message with inline keyboard (plain text to avoid parse errors)
+            const { text, keyboard } = formatInterruptMessage(chunk.interrupt);
+            await ctx.reply(text, { reply_markup: keyboard });
+            break;
+          }
+
+          case 'interrupt_resolved': {
+            // Clear pending interrupt
+            this.#pendingInterrupts.delete(chatId);
+
+            const statusMsg = chunk.approved ? '✓ Approved' : '✗ Denied';
+            await ctx.reply(statusMsg);
+
+            // Refresh typing indicator for continued response
+            await ctx.replyWithChatAction('typing');
+            break;
+          }
+
+          case 'done':
+            if (responseBuffer.trim()) {
+              await sendLongMessage(ctx, responseBuffer);
+            }
+            responseBuffer = '';
+            break;
+
+          case 'error':
+            await ctx.reply(`❌ Error: ${chunk.error}`);
+            break;
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await ctx.reply(`❌ Error: ${errorMessage}`);
+    }
+  };
+
+  /**
+   * Handles callback queries from inline keyboards.
+   */
+  #handleCallback = async (ctx: Context): Promise<void> => {
+    const data = ctx.callbackQuery?.data;
+    const chatId = ctx.chat?.id;
+
+    if (!data || !chatId || !this.#orchestrator) {
+      await ctx.answerCallbackQuery({ text: 'Invalid request' });
+      return;
+    }
+
+    const parsed = parseCallbackData(data);
+    if (!parsed) {
+      await ctx.answerCallbackQuery({ text: 'Invalid action' });
+      return;
+    }
+
+    // Verify this is the expected interrupt
+    const pendingInterruptId = this.#pendingInterrupts.get(chatId);
+    if (pendingInterruptId !== parsed.interruptId) {
+      await ctx.answerCallbackQuery({ text: 'This action has expired' });
+      return;
+    }
+
+    // Answer the callback to remove loading state
+    await ctx.answerCallbackQuery();
+
+    // Edit the message to remove keyboard
+    await ctx.editMessageReplyMarkup(undefined);
+
+    // Show typing indicator
+    await ctx.replyWithChatAction('typing');
+
+    try {
+      // Build response based on action
+      const response =
+        parsed.action === 'approve'
+          ? { approved: true }
+          : parsed.action === 'deny'
+            ? { approved: false }
+            : { selectedOptionId: parsed.optionId };
+
+      let responseBuffer = '';
+
+      for await (const chunk of this.#orchestrator.respondToInterrupt(parsed.interruptId, response)) {
+        switch (chunk.type) {
+          case 'token':
+            responseBuffer += chunk.content;
+            break;
+
+          case 'tool_start':
+            await ctx.replyWithChatAction('typing');
+            break;
+
+          case 'interrupt': {
+            this.#pendingInterrupts.set(chatId, chunk.interrupt.id);
+            const { text, keyboard } = formatInterruptMessage(chunk.interrupt);
+            await ctx.reply(text, { reply_markup: keyboard });
+            break;
+          }
+
+          case 'interrupt_resolved':
+            this.#pendingInterrupts.delete(chatId);
+            await ctx.replyWithChatAction('typing');
+            break;
+
+          case 'done':
+            if (responseBuffer.trim()) {
+              await sendLongMessage(ctx, responseBuffer);
+            }
+            responseBuffer = '';
+            break;
+
+          case 'error':
+            await ctx.reply(`❌ Error: ${chunk.error}`);
+            break;
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await ctx.reply(`❌ Error: ${errorMessage}`);
+    }
+  };
+
+  /**
+   * Gets or creates a conversation for a Telegram chat.
+   */
+  #getOrCreateConversation = async (chatId: number, userId: number): Promise<string> => {
+    // Check for existing mapping
+    const existing = await getTelegramChat(this.#db(), chatId);
+    if (existing) {
+      await updateLastActivity(this.#db(), chatId);
+      return existing.conversationId;
+    }
+
+    // Create new conversation
+    if (!this.#orchestrator) {
+      throw new TelegramNotConfiguredError();
+    }
+
+    const conversationId = await this.#orchestrator.startConversation({
+      title: `Telegram Chat ${chatId}`,
+    });
+
+    // Store mapping
+    await createTelegramChat(this.#db(), {
+      telegramChatId: chatId,
+      telegramUserId: userId,
+      conversationId,
+    });
+
+    return conversationId;
+  };
+
+  /**
+   * Starts the bot (polling mode).
+   */
+  start = async (): Promise<void> => {
+    if (!this.#bot) {
+      throw new TelegramNotConfiguredError();
+    }
+
+    console.log(`Starting ${this.#assistantName} Telegram bot...`);
+    console.log(`Authorized user ID: ${this.#config?.ownerId}`);
+
+    await this.#bot.start({
+      onStart: (botInfo) => {
+        console.log(`Bot started as @${botInfo.username}`);
+      },
+    });
+  };
+
+  /**
+   * Stops the bot.
+   */
+  stop = async (): Promise<void> => {
+    if (this.#bot) {
+      await this.#bot.stop();
+      console.log('Telegram bot stopped.');
+    }
+  };
+}
+
+// Re-export types and schemas
+export type { TelegramConfig, TelegramChat, CreateTelegramChatInput } from './telegram.schemas.ts';
+export { telegramConfigSchema, telegramChatSchema, createTelegramChatInputSchema } from './telegram.schemas.ts';
+
+export { TelegramClientService, TelegramNotConfiguredError };
