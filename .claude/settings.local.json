@@ -20,7 +20,13 @@
       "Bash(node:*)",
       "Bash(tree:*)",
       "Bash(wc:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(GLADOS_LLM_API_KEY=test GLADOS_TELEGRAM_BOT_TOKEN=test GLADOS_TELEGRAM_OWNER_ID=123 timeout 5 pnpm server:*)",
+      "Bash(GLADOS_LLM_API_KEY=test GLADOS_TELEGRAM_BOT_TOKEN=test GLADOS_TELEGRAM_OWNER_ID=123 node:*)",
+      "Bash(timeout 10 pnpm server:*)",
+      "Bash(echo:*)",
+      "Bash(pkill:*)",
+      "Bash(timeout 8 pnpm server:*)"
     ]
   }
 }

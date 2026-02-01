@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Build output (not used - we run TypeScript directly)
+dist/
+
+# Development files
+.git/
+.github/
+*.md
+!README.md
+
+# Test files
+test/
+**/*.test.ts
+vitest.config.ts
+coverage/
+
+# Config examples
+config/*.example*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local database
+*.db
+*.db-journal
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore

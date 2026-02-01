@@ -11,7 +11,8 @@
     "test": "pnpm run \"/^test:/\"",
     "cli": "node --experimental-strip-types src/cli/cli.ts",
     "telegram": "node --experimental-strip-types src/clients/telegram/telegram.cli.ts",
-    "proactive": "node --experimental-strip-types src/proactive/proactive.cli.ts"
+    "proactive": "node --experimental-strip-types src/proactive/proactive.cli.ts",
+    "server": "node --experimental-strip-types src/server/server.ts"
   },
   "packageManager": "pnpm@10.6.0",
   "files": [
