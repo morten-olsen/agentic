@@ -211,6 +211,77 @@ const dailyBriefingCheck: BuiltinCheckDefinition = {
 };
 
 // ============================================================================
+// Deadline Reminders Check
+// ============================================================================
+
+/**
+ * Checks for user tasks with deadline triggers that are due.
+ * Runs every minute to ensure timely reminders.
+ *
+ * Only notifies for 'pending' tasks - after notification, tasks are
+ * transitioned to 'active' status to prevent duplicate reminders.
+ */
+const deadlineRemindersCheck: BuiltinCheckDefinition = {
+  input: {
+    name: 'deadline-reminders',
+    description: 'Checks for tasks with deadlines that are due now',
+    schedule: '* * * * *', // Every minute
+    checkType: 'builtin',
+  },
+  executor:
+    (services: Services): CheckExecutor =>
+    async (): Promise<ProactiveResult | null> => {
+      const taskService = services.get(TaskService);
+
+      const now = new Date();
+
+      // Get tasks due before now (deadline has passed or is now)
+      const dueTasks = await taskService.getDueUserTasks(now);
+
+      // Only notify for 'pending' tasks - 'active' means already reminded
+      const pendingDueTasks = dueTasks.filter((task) => task.status === 'pending');
+
+      if (pendingDueTasks.length === 0) {
+        return null;
+      }
+
+      // Transition tasks to 'active' so we don't re-notify
+      for (const task of pendingDueTasks) {
+        await taskService.updateUserTask(task.id, { status: 'active' });
+      }
+
+      // Format the notification
+      if (pendingDueTasks.length === 1) {
+        const task = pendingDueTasks[0];
+        if (!task) return null; // Type guard
+        return {
+          finding: `Reminder: ${task.description}`,
+          urgency: 'high',
+          suggestedAction: {
+            type: 'notify',
+            content: `⏰ Reminder: ${task.description}`,
+          },
+          shouldNotify: true,
+        };
+      }
+
+      // Multiple tasks due
+      const descriptions = pendingDueTasks.slice(0, 5).map((t) => `• ${t.description}`);
+      const moreCount = pendingDueTasks.length > 5 ? `\n(+${pendingDueTasks.length - 5} more)` : '';
+
+      return {
+        finding: `${pendingDueTasks.length} tasks are due`,
+        urgency: 'high',
+        suggestedAction: {
+          type: 'notify',
+          content: `⏰ You have ${pendingDueTasks.length} task(s) due:\n\n${descriptions.join('\n')}${moreCount}`,
+        },
+        shouldNotify: true,
+      };
+    },
+};
+
+// ============================================================================
 // Deferred Tasks Check
 // ============================================================================
 
@@ -271,6 +342,7 @@ const BUILTIN_CHECKS: Record<string, BuiltinCheckDefinition> = {
   'stale-followups': staleFollowupsCheck,
   'daily-briefing': dailyBriefingCheck,
   'deferred-tasks': deferredTasksCheck,
+  'deadline-reminders': deadlineRemindersCheck,
 };
 
 /**

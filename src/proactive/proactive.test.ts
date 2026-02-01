@@ -516,5 +516,46 @@ describe('ProactiveScheduler', () => {
       expect(check).not.toBeNull();
       expect(check?.schedule).toBe('0 9 * * *');
     });
+
+    it('has deadline-reminders check', async () => {
+      await scheduler.start();
+
+      const check = await scheduler.getCheckByName('deadline-reminders');
+      expect(check).not.toBeNull();
+      expect(check?.schedule).toBe('* * * * *'); // Every minute
+    });
+
+    it('deadline-reminders check notifies for due tasks and transitions to active', async () => {
+      await scheduler.start();
+
+      const taskService = services.get(TaskService);
+
+      // Create a task with a deadline in the past
+      const pastDeadline = new Date(Date.now() - 60000).toISOString(); // 1 minute ago
+      const task = await taskService.createUserTask({
+        description: 'Test reminder',
+        trigger: { type: 'deadline', dueAt: pastDeadline },
+      });
+      expect(task.status).toBe('pending');
+
+      // Run the deadline-reminders check
+      const check = await scheduler.getCheckByName('deadline-reminders');
+      expect(check).toBeDefined();
+      if (!check) throw new Error('Check not found');
+
+      const run = await scheduler.runCheck(check.id);
+      expect(run.result).not.toBeUndefined();
+      expect(run.result?.finding).toBe('Reminder: Test reminder');
+      expect(run.result?.shouldNotify).toBe(true);
+      expect(run.result?.urgency).toBe('high');
+
+      // Task should be transitioned to 'active'
+      const updatedTask = await taskService.getUserTask(task.id);
+      expect(updatedTask?.status).toBe('active');
+
+      // Running again should not notify (task is now active, not pending)
+      const run2 = await scheduler.runCheck(check.id);
+      expect(run2.result).toBeUndefined(); // null result means nothing to notify
+    });
   });
 });
