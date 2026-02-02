@@ -223,7 +223,7 @@ describe('calculateNextInvocation', () => {
     expect(next?.toISOString()).toBe('2099-03-15T10:00:00.000Z');
   });
 
-  it('returns null for one-time trigger in past', () => {
+  it('returns time for one-time trigger in past that never fired (for catch-up)', () => {
     const trigger: Trigger = {
       id: 'test',
       name: 'test',
@@ -231,6 +231,25 @@ describe('calculateNextInvocation', () => {
       schedule: { type: 'once', at: '2020-03-15T10:00:00Z' },
       status: 'active',
       invocationCount: 0,
+      consecutiveFailures: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const next = calculateNextInvocation(trigger);
+    // Returns the time so catch-up logic can decide whether to fire
+    expect(next).not.toBeNull();
+    expect(next?.toISOString()).toBe('2020-03-15T10:00:00.000Z');
+  });
+
+  it('returns null for one-time trigger in past that already fired', () => {
+    const trigger: Trigger = {
+      id: 'test',
+      name: 'test',
+      goal: 'Test',
+      schedule: { type: 'once', at: '2020-03-15T10:00:00Z' },
+      status: 'active',
+      invocationCount: 1, // Already fired once
       consecutiveFailures: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

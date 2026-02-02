@@ -120,8 +120,11 @@ const createRiskGateNode = (toolRegistry: ToolRegistry, approvalLevels: RiskLeve
   return async (state: OrchestratorState): Promise<Partial<OrchestratorState>> => {
     const lastMessage = state.messages[state.messages.length - 1];
 
+    console.log('[riskGateNode] lastMessage type:', lastMessage?._getType?.() ?? 'unknown');
+
     // No tool calls - pass through
     if (!lastMessage || !('tool_calls' in lastMessage)) {
+      console.log('[riskGateNode] No tool calls, passing through');
       return {};
     }
 
@@ -164,6 +167,13 @@ const createRiskGateNode = (toolRegistry: ToolRegistry, approvalLevels: RiskLeve
     }
 
     // Return state updates
+    console.log(
+      '[riskGateNode] Result: approved=%d, pending=%s, interrupt=%s',
+      mergedApproved.length,
+      result.pendingToolCall?.name ?? 'none',
+      result.interruptRequired,
+    );
+
     return {
       approvedToolCalls: mergedApproved,
       pendingToolCall: result.pendingToolCall,
