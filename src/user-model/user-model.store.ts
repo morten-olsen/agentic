@@ -151,7 +151,15 @@ const createIdentity = async (knex: Knex, input: IdentityInput): Promise<Identit
 const updateIdentity = async (knex: Knex, updates: Partial<IdentityInput>): Promise<Identity> => {
   const existing = await getIdentity(knex);
   if (!existing) {
-    throw new Error('Identity not found');
+    // Create a default identity first, then apply updates
+    const defaultIdentity = await createIdentity(knex, {
+      name: updates.name ?? 'User',
+      timezone: updates.timezone,
+      locale: updates.locale,
+      workingHours: updates.workingHours,
+      preferences: updates.preferences,
+    });
+    return defaultIdentity;
   }
 
   const updateData: Partial<IdentityRow> = {

@@ -229,10 +229,10 @@ invoked this conversation. When called from a user conversation, triggerId is re
   inputSchema: deleteTriggerInputSchema,
   outputSchema: deleteTriggerOutputSchema,
   risk: {
-    level: 'medium',
-    reason: 'Permanently deletes a trigger',
+    level: 'low',
+    reason: 'Deletes a trigger (can be recreated)',
     potentialImpact: 'Trigger will no longer fire',
-    reversible: false,
+    reversible: true, // Can recreate the trigger
     categories: ['data_deletion'],
   },
   tags: ['triggers', 'scheduling', 'write', 'delete'],
