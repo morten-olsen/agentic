@@ -156,6 +156,7 @@ describe('PersonalityService', () => {
       const personality = new PersonalityService(services);
       const context: AgentContext = {
         now: '2024-01-15T10:00:00Z',
+        localTime: 'Mon, Jan 15, 2024, 10:00 AM',
         timezone: 'UTC',
         timeOfDay: 'morning',
         isWorkingHours: true,

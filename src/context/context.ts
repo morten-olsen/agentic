@@ -28,24 +28,36 @@ class ContextBuilderService {
    * Call this at the start of each interaction to give the agent a complete picture.
    */
   buildContext = async (now: Date = new Date()): Promise<AgentContext> => {
-    const [userContext, locationContext, calendarContext, recentTopics, pendingTasks, dayPlanContext] =
-      await Promise.all([
-        this.#buildUserContext(),
-        this.#buildLocationContext(),
-        this.#buildCalendarContext(now),
-        this.#getRecentTopics(),
-        this.#getPendingTasks(),
-        this.#getDayPlanContext(),
-      ]);
-
     const userModel = this.#services.get(UserModelService);
     const identity = await userModel.getIdentity();
+    const timezone = identity?.timezone ?? 'UTC';
+
+    const [
+      userContext,
+      locationContext,
+      calendarContext,
+      recentTopics,
+      pendingTasks,
+      dayPlanContext,
+      timeOfDay,
+      localTime,
+    ] = await Promise.all([
+      this.#buildUserContext(),
+      this.#buildLocationContext(),
+      this.#buildCalendarContext(now),
+      this.#getRecentTopics(),
+      this.#getPendingTasks(),
+      this.#getDayPlanContext(),
+      userModel.getTimeOfDay(now),
+      userModel.formatLocalTime(now),
+    ]);
 
     return {
       // Time (when)
       now: now.toISOString(),
-      timezone: identity?.timezone ?? 'UTC',
-      timeOfDay: userModel.getTimeOfDay(now),
+      localTime,
+      timezone,
+      timeOfDay,
       isWorkingHours: await userModel.isWorkingHours(now),
 
       // Location (where)

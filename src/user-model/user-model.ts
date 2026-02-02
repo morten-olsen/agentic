@@ -17,7 +17,7 @@ import type {
   GoalTimeframe,
 } from './user-model.schemas.ts';
 import * as store from './user-model.store.ts';
-import { getTimeOfDay, isWorkingHours } from './user-model.utils.ts';
+import { getTimeOfDay, isWorkingHours, formatLocalTime } from './user-model.utils.ts';
 import type { TimeOfDay } from './user-model.utils.ts';
 
 /**
@@ -63,18 +63,28 @@ class UserModelService {
 
   /**
    * Checks if it's currently within the user's working hours.
+   * Uses the user's configured timezone for calculation.
    */
   isWorkingHours = async (date: Date = new Date()): Promise<boolean> => {
     const identity = await this.getIdentity();
     if (!identity) return false;
-    return isWorkingHours(identity.workingHours, date);
+    return isWorkingHours(identity.workingHours, date, identity.timezone);
   };
 
   /**
-   * Gets the current time of day.
+   * Gets the current time of day in the user's timezone.
    */
-  getTimeOfDay = (date: Date = new Date()): TimeOfDay => {
-    return getTimeOfDay(date);
+  getTimeOfDay = async (date: Date = new Date()): Promise<TimeOfDay> => {
+    const identity = await this.getIdentity();
+    return getTimeOfDay(date, identity?.timezone);
+  };
+
+  /**
+   * Formats a date as a human-readable local time string in the user's timezone.
+   */
+  formatLocalTime = async (date: Date = new Date()): Promise<string> => {
+    const identity = await this.getIdentity();
+    return formatLocalTime(date, identity?.timezone ?? 'UTC');
   };
 
   // ==========================================================================
@@ -254,4 +264,4 @@ export type {
 export type { TimeOfDay } from './user-model.utils.ts';
 
 export { UserModelService };
-export { getTimeOfDay, isWorkingHours } from './user-model.utils.ts';
+export { getTimeOfDay, isWorkingHours, formatLocalTime, getTimeInTimezone } from './user-model.utils.ts';

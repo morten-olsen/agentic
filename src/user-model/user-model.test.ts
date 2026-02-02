@@ -4,7 +4,7 @@ import { Services } from '../services/services.ts';
 import { createDatabaseService, DatabaseService } from '../database/database.ts';
 
 import { UserModelService } from './user-model.ts';
-import { getTimeOfDay, isWorkingHours } from './user-model.utils.ts';
+import { getTimeOfDay, isWorkingHours, getTimeInTimezone, formatLocalTime } from './user-model.utils.ts';
 
 describe('UserModelService', () => {
   let services: Services;
@@ -339,6 +339,72 @@ describe('User Model Utils', () => {
     it('returns true exactly at start time', () => {
       // Monday at 09:00
       expect(isWorkingHours(workingHours, new Date('2024-01-15T09:00:00'))).toBe(true);
+    });
+
+    it('returns correct result when using timezone parameter', () => {
+      // 15:00 UTC = 10:00 EST (within working hours on Monday)
+      expect(isWorkingHours(workingHours, new Date('2024-01-15T15:00:00Z'), 'America/New_York')).toBe(true);
+
+      // 10:00 UTC = 05:00 EST (outside working hours on Monday)
+      expect(isWorkingHours(workingHours, new Date('2024-01-15T10:00:00Z'), 'America/New_York')).toBe(false);
+
+      // 22:00 UTC = 17:00 EST (at end time, outside working hours)
+      expect(isWorkingHours(workingHours, new Date('2024-01-15T22:00:00Z'), 'America/New_York')).toBe(false);
+    });
+  });
+
+  describe('getTimeInTimezone', () => {
+    it('converts UTC time to different timezone', () => {
+      // 15:00 UTC = 10:00 EST
+      const result = getTimeInTimezone(new Date('2024-01-15T15:00:00Z'), 'America/New_York');
+      expect(result.hour).toBe(10);
+      expect(result.minute).toBe(0);
+      expect(result.dayOfWeek).toBe(1); // Monday
+    });
+
+    it('handles day boundary correctly', () => {
+      // 02:00 UTC = 21:00 EST previous day
+      const result = getTimeInTimezone(new Date('2024-01-15T02:00:00Z'), 'America/New_York');
+      expect(result.hour).toBe(21);
+      expect(result.dayOfWeek).toBe(0); // Sunday
+    });
+
+    it('handles Europe/Amsterdam timezone', () => {
+      // 10:00 UTC = 11:00 CET (in January)
+      const result = getTimeInTimezone(new Date('2024-01-15T10:00:00Z'), 'Europe/Amsterdam');
+      expect(result.hour).toBe(11);
+    });
+  });
+
+  describe('formatLocalTime', () => {
+    it('formats time in specified timezone', () => {
+      // 15:00 UTC = 10:00 EST
+      const result = formatLocalTime(new Date('2024-01-15T15:00:00Z'), 'America/New_York');
+      expect(result).toContain('10:00');
+      expect(result).toContain('Jan');
+      expect(result).toContain('2024');
+    });
+
+    it('formats time in Europe/Amsterdam timezone', () => {
+      // 10:00 UTC = 11:00 CET (in January)
+      const result = formatLocalTime(new Date('2024-01-15T10:00:00Z'), 'Europe/Amsterdam');
+      expect(result).toContain('11:00');
+    });
+  });
+
+  describe('getTimeOfDay with timezone', () => {
+    it('returns correct time of day for timezone', () => {
+      // 15:00 UTC = 10:00 EST = morning
+      expect(getTimeOfDay(new Date('2024-01-15T15:00:00Z'), 'America/New_York')).toBe('morning');
+
+      // 17:00 UTC = 12:00 EST = afternoon
+      expect(getTimeOfDay(new Date('2024-01-15T17:00:00Z'), 'America/New_York')).toBe('afternoon');
+
+      // 22:00 UTC = 17:00 EST = evening
+      expect(getTimeOfDay(new Date('2024-01-15T22:00:00Z'), 'America/New_York')).toBe('evening');
+
+      // 03:00 UTC = 22:00 EST (previous day) = night
+      expect(getTimeOfDay(new Date('2024-01-15T03:00:00Z'), 'America/New_York')).toBe('night');
     });
   });
 });

@@ -237,24 +237,27 @@ describe('ContextBuilderService', () => {
         isDefault: true,
       });
 
-      // Set up calendar
+      // Set up calendar (times in UTC)
+      // Standup at 09:30 AM EST = 14:30 UTC (just before the test time of 10 AM EST / 15:00 UTC)
       await calendar.createEvent({
         title: 'Standup',
-        start: '2024-01-15T09:00:00.000Z',
-        end: '2024-01-15T09:15:00.000Z',
+        start: '2024-01-15T14:30:00.000Z',
+        end: '2024-01-15T14:45:00.000Z',
         timezone: 'America/New_York',
       });
+      // 1:1 at 2 PM EST = 19:00 UTC
       await calendar.createEvent({
         title: '1:1 with Manager',
-        start: '2024-01-15T14:00:00.000Z',
-        end: '2024-01-15T14:30:00.000Z',
+        start: '2024-01-15T19:00:00.000Z',
+        end: '2024-01-15T19:30:00.000Z',
         timezone: 'America/New_York',
         requiresPrep: true,
         prepNotes: 'Discuss project timeline',
       });
 
-      // Build context at 10am on Monday
-      const now = new Date('2024-01-15T10:00:00.000Z');
+      // Build context at 10am EST (15:00 UTC) on Monday January 15, 2024
+      // (America/New_York is UTC-5 in January)
+      const now = new Date('2024-01-15T15:00:00.000Z');
       const context = await contextBuilder.buildContext(now);
 
       // Verify all pieces are assembled

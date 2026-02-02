@@ -8,7 +8,96 @@ import {
   goalTimeframeSchema,
   projectSchema,
   goalSchema,
+  identitySchema,
+  workingHoursSchema,
+  preferencesSchema,
 } from '../../user-model/user-model.schemas.ts';
+
+// ============================================================================
+// Identity
+// ============================================================================
+
+const updateIdentityInputSchema = z.object({
+  name: z.string().min(1).optional().describe("User's name"),
+  timezone: z.string().optional().describe('IANA timezone (e.g., "America/New_York", "Europe/Amsterdam", "UTC")'),
+  locale: z.string().optional().describe('Locale for formatting (e.g., "en-US", "nl-NL")'),
+  workingHours: workingHoursSchema.optional().describe('Working hours configuration'),
+  preferences: preferencesSchema.partial().optional().describe('User preferences'),
+});
+
+const updateIdentityOutputSchema = identitySchema;
+
+type UpdateIdentityInput = z.infer<typeof updateIdentityInputSchema>;
+type UpdateIdentityOutput = z.infer<typeof updateIdentityOutputSchema>;
+
+const updateIdentityTool: ToolDefinition<UpdateIdentityInput, UpdateIdentityOutput> = {
+  id: 'user_model.update_identity',
+  name: 'UpdateIdentity',
+  description: `Update the user's identity settings including timezone, locale, working hours, and preferences.
+
+Use this tool when the user wants to:
+- Change their timezone (e.g., "set my timezone to Europe/Amsterdam")
+- Update their working hours
+- Change their communication preferences
+- Update their name
+
+Timezone must be a valid IANA timezone identifier (e.g., "America/New_York", "Europe/London", "Asia/Tokyo").`,
+  category: 'user_model',
+  inputSchema: updateIdentityInputSchema,
+  outputSchema: updateIdentityOutputSchema,
+  risk: {
+    level: 'low',
+    reason: 'Updates user preferences, easily reversible',
+    potentialImpact: 'Changes user settings',
+    reversible: true,
+    categories: ['data_modification'],
+  },
+  tags: ['user', 'identity', 'settings', 'write'],
+  examples: [
+    { input: { timezone: 'Europe/Amsterdam' }, description: 'Set timezone to Amsterdam' },
+    { input: { timezone: 'America/New_York' }, description: 'Set timezone to New York' },
+    {
+      input: {
+        workingHours: { start: '08:00', end: '18:00', days: [1, 2, 3, 4, 5] },
+      },
+      description: 'Update working hours to 8 AM - 6 PM on weekdays',
+    },
+    {
+      input: { preferences: { communicationStyle: 'casual' } },
+      description: 'Change communication style to casual',
+    },
+  ],
+  execute: async (input: UpdateIdentityInput, context: ToolContext): Promise<UpdateIdentityOutput> => {
+    const userModel = context.services.get(UserModelService);
+    return userModel.updateIdentity(input);
+  },
+};
+
+const getIdentityOutputSchema = identitySchema.nullable();
+
+type GetIdentityOutput = z.infer<typeof getIdentityOutputSchema>;
+
+const getIdentityTool: ToolDefinition<Record<string, never>, GetIdentityOutput> = {
+  id: 'user_model.get_identity',
+  name: 'GetIdentity',
+  description: "Get the user's identity settings including name, timezone, locale, working hours, and preferences.",
+  category: 'user_model',
+  inputSchema: z.object({}),
+  outputSchema: getIdentityOutputSchema,
+  risk: {
+    level: 'low',
+    reason: 'Read-only operation',
+    potentialImpact: 'None',
+    reversible: true,
+    categories: [],
+  },
+  tags: ['user', 'identity', 'settings', 'read'],
+  examples: [{ input: {}, description: 'Get current identity settings' }],
+  execute: async (_input: Record<string, never>, context: ToolContext): Promise<GetIdentityOutput> => {
+    const userModel = context.services.get(UserModelService);
+    return userModel.getIdentity();
+  },
+};
 
 // ============================================================================
 // Projects
@@ -288,6 +377,8 @@ const updateGoalTool: ToolDefinition<UpdateGoalInput, UpdateGoalOutput> = {
 // ============================================================================
 
 const registerUserModelTools = (registry: ToolRegistry): void => {
+  registry.register(getIdentityTool);
+  registry.register(updateIdentityTool);
   registry.register(listProjectsTool);
   registry.register(createProjectTool);
   registry.register(updateProjectTool);
@@ -298,6 +389,8 @@ const registerUserModelTools = (registry: ToolRegistry): void => {
 };
 
 export {
+  getIdentityTool,
+  updateIdentityTool,
   listProjectsTool,
   createProjectTool,
   updateProjectTool,

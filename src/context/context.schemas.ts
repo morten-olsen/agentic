@@ -63,6 +63,7 @@ type UserContext = z.infer<typeof userContextSchema>;
 const agentContextSchema = z.object({
   // Time (when)
   now: z.string().datetime(),
+  localTime: z.string(),
   timezone: z.string(),
   timeOfDay: timeOfDaySchema,
   isWorkingHours: z.boolean(),
