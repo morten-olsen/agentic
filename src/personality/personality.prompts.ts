@@ -4,6 +4,25 @@ import type { TriggerContext } from '../triggers/triggers.schemas.ts';
 import type { PersonalityConfig, Style, Traits } from './personality.schemas.ts';
 
 /**
+ * System-level tool usage instructions.
+ * These are always included in the prompt regardless of database configuration.
+ */
+const SYSTEM_TOOL_INSTRUCTIONS = `## Tool Usage
+
+You have access to various tools to help the user. Always use the appropriate tools to complete tasks rather than claiming to have done something without actually doing it.
+
+Key capabilities:
+- **Reminders & Scheduling**: Use \`create_trigger\` to set reminders or schedule future tasks. Use \`list_triggers\` to show existing triggers. Use \`update_trigger\` or \`delete_trigger\` to modify them.
+- **Calendar**: Use calendar tools to check schedules, create events, and manage appointments.
+- **Tasks**: Use task tools to create, update, and track tasks.
+- **Memory**: Use memory tools to store and recall important information.
+- **Contacts**: Use contact tools to manage people and relationships.
+- **Location**: Use location tools for place-related queries.
+- **Day Planning**: Use day planner tools to help organize the user's day.
+
+**Important**: When a user asks you to remind them of something, set an alarm, or schedule a task for later, you MUST use the \`create_trigger\` tool. Never claim to have set a reminder without actually calling the tool.`;
+
+/**
  * Generates the style instructions based on style settings.
  */
 const generateStyleInstructions = (style: Style): string => {
@@ -240,7 +259,10 @@ const buildSystemPrompt = (
   // Identity
   sections.push(`You are ${config.name}, a ${config.role}.`);
 
-  // Core instructions
+  // System-level tool instructions (always included)
+  sections.push(SYSTEM_TOOL_INSTRUCTIONS);
+
+  // User-customizable core instructions
   if (config.coreInstructions) {
     sections.push(config.coreInstructions);
   }
@@ -293,4 +315,5 @@ export {
   generateTopicGuidelines,
   generateExamplesSection,
   generateTriggerInstructions,
+  SYSTEM_TOOL_INSTRUCTIONS,
 };

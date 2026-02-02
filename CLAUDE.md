@@ -8,7 +8,7 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 
 **Key differentiators from a generic chatbot:**
 - Knows *who you are* (User Model, Contacts, Calendar as core infrastructure)
-- Anticipates needs (Proactive Scheduler, daily briefings)
+- Anticipates needs (Trigger System, daily briefings, day planning)
 - Manages multi-step tasks that span hours/days (Task Queue)
 - Human-in-the-loop for trust (risk-gated tools, approval flows)
 
@@ -16,6 +16,7 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 - **Spec**: `spec/agent.md` - Technical specification (types, schemas, implementation phases)
 - **Telegram Spec**: `spec/telegram.md` - Telegram bot integration specification
 - **Triggers Spec**: `spec/triggers.md` - Trigger system specification
+- **Day Planner Spec**: `spec/day-planner.md` - Daily planning sessions and context
 - **Architecture**: `docs/agent-architecture.md` - Conceptual guide (how the agent thinks)
 - **External Clients**: `docs/external-clients.md` - Guide for building external client integrations
 - **Coding Standards**: `docs/coding-standards.md` - TypeScript conventions
@@ -165,6 +166,24 @@ The trigger system provides agent-managed scheduled invocations:
 - **Self-management**: Triggers can update or delete themselves
 - **Notifications**: Background triggers can notify users via Telegram using the `notify` tool
 - **Pre-installed triggers**: `daily-briefing`, `calendar-lookahead`, `stale-followups`
+
+### Day Planner Module
+
+```
+src/day-planner/
+├── day-planner.ts         # Main DayPlanService
+├── day-planner.schemas.ts # DayPlan, Priority, FocusBlock types
+├── day-planner.store.ts   # SQLite persistence
+├── day-planner.errors.ts  # Custom errors
+└── day-planner.test.ts    # Unit tests
+```
+
+The day planner provides:
+- **Planning sessions**: Interactive daily planning with the agent
+- **Day plan context**: Loaded into every agent interaction
+- **Priorities**: Ordered list with completion tracking
+- **Focus blocks**: Dedicated time for deep work
+- **Energy tracking**: User's expected energy level
 
 ### Notification Modules (Phase 6)
 
@@ -341,7 +360,7 @@ These have been decided and documented in the spec:
 ### Two-Layer Architecture
 
 - **Foundation Layer**: User Model, Contacts, Calendar, Memory - always available context
-- **Orchestration Layer**: Orchestrator, Proactive Scheduler, Task Queue, Notifications
+- **Orchestration Layer**: Orchestrator, Trigger System, Task Queue, Notifications
 
 ### Core Infrastructure (not optional tools)
 
@@ -354,8 +373,9 @@ The "who, where, when" foundation:
 
 ### Proactive, Not Just Reactive
 
-- **Proactive Scheduler**: Cron-based checks that initiate agent actions
-- **Built-in checks**: Calendar lookahead, stale follow-ups, daily briefing
+- **Trigger System**: Agent-managed scheduled invocations (one-time or cron)
+- **Pre-installed triggers**: Calendar lookahead, stale follow-ups, daily briefing
+- **Day Planning**: Structured daily planning with priorities and focus blocks
 - **Long-running tasks**: Multi-step workflows that span hours/days
 
 ### Memory
@@ -406,7 +426,7 @@ This project uses Zod 4 which has some differences from Zod 3:
 - Configuration uses Convict - see `src/config/config.ts`
 - The CLI requires `GLADOS_LLM_API_KEY` to be set
 - The Telegram bot requires `GLADOS_TELEGRAM_BOT_TOKEN` and `GLADOS_TELEGRAM_OWNER_ID`
-- The proactive scheduler runs as a separate process: `pnpm proactive`
+- The trigger system is integrated into the Telegram bot (triggers fire and notify via Telegram)
 - Default LLM provider is OpenRouter (`https://openrouter.ai/api/v1`)
 - External clients use the same OrchestratorService as the CLI
 - Future phases (8-9) are documented in `spec/future-phases.md`

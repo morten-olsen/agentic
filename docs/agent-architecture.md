@@ -759,26 +759,96 @@ The goal: **excellent results at reasonable cost**. The agent shouldn't be penny
 
 The agent doesn't wait to be invoked - it works in the background to anticipate needs.
 
-### Scheduled Checks
+### The Trigger System
 
-The agent runs periodic checks:
+Proactive behavior is powered by **triggers** - agent-managed scheduled invocations. Unlike traditional cron jobs, triggers are created, modified, and deleted by the agent itself through conversation.
 
-| Check | Frequency | Purpose |
-|-------|-----------|---------|
-| Calendar lookahead | Hourly | Surface upcoming events needing prep |
-| Stale follow-ups | Daily | Identify tasks waiting too long |
-| Morning briefing | Daily | Summarize the day ahead |
-| Weekly review | Weekly | Reflect on progress, suggest adjustments |
+**Trigger types:**
 
-### Self-Scheduled Tasks
+| Type | Schedule | Examples |
+|------|----------|----------|
+| **One-time** | Specific datetime | "Remind me at 3pm", "Follow up next Tuesday" |
+| **Recurring** | Cron expression | "Every morning at 9am", "Weekdays at 5pm" |
 
-When you say "remind me in 3 days" or "follow up if I don't hear back," the agent creates scheduled tasks for itself. These aren't just reminders - they're instructions for future action:
+**How triggers work:**
 
-- "In 3 days, check if David replied. If not, draft a follow-up."
-- "Every Monday, review the project list and highlight stuck items."
-- "After the conference, summarize my notes and create action items."
+1. User requests a reminder or scheduled task
+2. Agent uses `create_trigger` tool to schedule it
+3. When the trigger fires, a background agent session runs
+4. The agent executes the goal and can notify the user via `notify` tool
+5. The agent can update or delete its own trigger based on results
 
-### Condition Watching
+```
+User: "Remind me to follow up with David in 3 days if he hasn't replied"
+
+Agent:
+1. Creates trigger: { schedule: "once", at: "2024-03-18T09:00:00" }
+2. Goal: "Check if David replied. If not, draft a follow-up and notify user."
+
+[Trigger fires in 3 days]
+Background agent:
+1. Checks email/messages for David's reply
+2. If no reply: drafts follow-up, sends notification
+3. If replied: deletes trigger (no longer needed)
+```
+
+### Pre-installed Triggers
+
+The system comes with default triggers that users can pause or delete:
+
+| Trigger | Schedule | Purpose |
+|---------|----------|---------|
+| `daily-briefing` | Weekdays 8am | Morning summary of calendar, priorities |
+| `calendar-lookahead` | Every hour | Surface upcoming events needing prep |
+| `stale-followups` | Daily 9am | Identify tasks waiting too long |
+
+### Day Planning
+
+The agent supports structured **daily planning sessions** that produce a day plan loaded into every interaction. This gives the agent awareness of your intentions for the day.
+
+**Day plan components:**
+- **Intentions**: High-level themes ("make progress on API redesign")
+- **Priorities**: Ordered list of what matters most today
+- **Focus blocks**: Dedicated time for deep work
+- **Energy level**: User's expected energy (low/medium/high)
+
+```
+[Morning planning session]
+Agent: "Good morning! Let's plan your day. You have 3 meetings,
+       leaving gaps at 8-10am and 2-4pm. What are your priorities?"
+
+User: "I need to finish the proposal and prep for the client call"
+
+Agent: "Got it. I've captured your day plan:
+       ☐ Finish proposal (priority 1)
+       ☐ Prep for client call (priority 2)
+       📍 8-10am focus block for proposal work
+
+       I'll keep this in mind throughout our conversations today."
+
+[Later that day]
+User: "What should I work on next?"
+
+Agent: "Based on your day plan, you've finished the proposal (nice!).
+       Your client call is in 2 hours - want to start prepping now?"
+```
+
+The day plan is part of the agent's context, so it naturally informs suggestions and prioritization.
+
+### Creating Custom Triggers
+
+Through conversation, users can create sophisticated scheduled behaviors:
+
+- "Every Monday, review the project list and highlight stuck items"
+- "After the conference, summarize my notes and create action items"
+- "Remind me to water the plants every 3 days"
+- "Check my calendar every morning and alert me if there are conflicts"
+
+The agent translates these into triggers with appropriate schedules and goals.
+
+### Future: Condition-Based Triggers
+
+> **Note**: Not yet implemented. Planned for Phase 8 (Reactive Events).
 
 Some tasks wait for conditions rather than times:
 
@@ -786,24 +856,28 @@ Some tasks wait for conditions rather than times:
 - "If any meeting gets added to tomorrow, alert me"
 - "When flight prices drop below $500, let me know"
 
-The agent maintains a watchlist of conditions and checks them when relevant events occur.
+This requires event ingress infrastructure (webhooks, polling) not yet implemented.
 
-### Routines
+### Notifications (Current Implementation)
 
-Routines are recurring behaviors the agent performs:
+When a trigger fires, the background agent can notify the user via the `notify` tool. Notifications support urgency levels:
 
-- **Morning**: Check calendar, summarize overnight emails, highlight priorities
-- **Pre-meeting**: Pull up relevant context, past interactions with attendees
-- **End of day**: Summarize accomplishments, move incomplete items to tomorrow
-- **Weekly**: Review goals, suggest adjustments, highlight patterns
+| Urgency | Behavior |
+|---------|----------|
+| `low` | Informational, non-urgent |
+| `medium` | Default, worth knowing |
+| `high` | Time-sensitive, needs attention |
+| `critical` | Urgent, interrupt immediately |
 
-Routines evolve through conversation: "Actually, I'd like the morning briefing to include weather too."
+Currently, notifications are delivered via Telegram only. The agent should use good judgment about when to notify vs. when to work silently.
 
-### Attention Budget: When NOT to Interrupt
+### Future: Attention Budget
 
-Proactivity is powerful, but so is restraint. The agent maintains an **attention budget** - an awareness of how much it should demand the user's focus.
+> **Note**: Sophisticated attention management is planned for future phases. See `spec/notifications-future.md`.
 
-**Factors that affect the budget:**
+The full vision includes an **attention budget** - awareness of how much the agent should demand user focus:
+
+**Factors that will affect the budget:**
 
 | Factor | Effect |
 |--------|--------|
@@ -813,7 +887,7 @@ Proactivity is powerful, but so is restraint. The agent maintains an **attention
 | **User responsiveness** | Not responding to notifications = back off |
 | **Stated preference** | "Leave me alone this afternoon" = respect it |
 
-**Interruption tiers:**
+**Planned interruption tiers:**
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -829,39 +903,13 @@ Proactivity is powerful, but so is restraint. The agent maintains an **attention
 └──────────────┴──────────────────────────────────────────────────────┘
 ```
 
-**Batching and timing:**
+**Planned features:**
 
-Instead of five separate notifications, the agent batches:
-
-```
-[Bad - five interruptions]
-10:01 - "Email from Sarah"
-10:15 - "Reminder: call at 11"
-10:22 - "Task overdue: expense report"
-10:45 - "Weather alert for tomorrow"
-10:52 - "News about Acme Corp"
-
-[Good - one thoughtful summary]
-10:30 - "Quick update: Sarah emailed about the proposal,
-        you have a call in 30 min, and your expense report
-        is overdue. Also, rain expected tomorrow for your
-        outdoor meeting. Want details on any of these?"
-```
-
-**Learning from feedback:**
-
-The agent calibrates based on reactions:
-- User immediately acts on notification → appropriate urgency
-- User dismisses without reading → too aggressive, recalibrate
-- User says "stop bothering me about X" → explicit rule learned
-- User misses something important → threshold was too high
-
-**Do Not Disturb modes:**
-
-- **Focus time**: Calendar blocks marked as focus = minimal interruption
-- **Quiet hours**: Configurable daily window (e.g., 10pm-7am)
-- **Manual DND**: "Don't interrupt me for the next 2 hours"
-- **Context-inferred**: In a meeting, traveling, etc.
+- **Batching**: Group multiple notifications into summaries
+- **Smart timing**: Deliver at natural breaks, not mid-task
+- **Learning**: Calibrate based on user reactions
+- **Do Not Disturb**: Quiet hours, focus blocks, manual DND
+- **Multi-channel routing**: Email, SMS, Slack based on urgency
 
 The goal: **the agent is helpful, not annoying**. A great assistant knows when to speak up and when to stay quiet.
 
