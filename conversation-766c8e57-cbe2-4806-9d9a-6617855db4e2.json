@@ -1,0 +1,43 @@
+{
+  "conversation": {
+    "id": "766c8e57-cbe2-4806-9d9a-6617855db4e2",
+    "title": "Telegram Chat 6910617238",
+    "startedAt": "2026-02-02T11:12:07.440Z",
+    "lastActivityAt": "2026-02-02T11:16:37.245Z",
+    "messageCount": 4
+  },
+  "messages": [
+    {
+      "id": "8ca237d1-bbf1-4d63-9589-6f953c075141",
+      "conversationId": "766c8e57-cbe2-4806-9d9a-6617855db4e2",
+      "role": "user",
+      "content": "Which triggers do I have?",
+      "createdAt": "2026-02-02T11:12:17.212Z"
+    },
+    {
+      "id": "3b36e575-a4d9-4947-bdd6-0c97833c314d",
+      "conversationId": "766c8e57-cbe2-4806-9d9a-6617855db4e2",
+      "role": "assistant",
+      "content": "I currently have no triggers configured in your system. If you would like me to set one up—for example, a recurring reminder or a scheduled task—please let me know the details.",
+      "inputTokens": 3827,
+      "outputTokens": 38,
+      "createdAt": "2026-02-02T11:12:21.917Z"
+    },
+    {
+      "id": "2bec7889-a42c-4cb6-8a9c-95d7b865bf94",
+      "conversationId": "766c8e57-cbe2-4806-9d9a-6617855db4e2",
+      "role": "user",
+      "content": "Use the task tool go get a list of my active tasks",
+      "createdAt": "2026-02-02T11:16:27.627Z"
+    },
+    {
+      "id": "92720319-db6e-455f-9f7c-df850d5031c3",
+      "conversationId": "766c8e57-cbe2-4806-9d9a-6617855db4e2",
+      "role": "assistant",
+      "content": "You currently have no active delegated tasks. If there is a multi-step project you would like me to handle autonomously, I am ready to begin once you provide the instructions.",
+      "inputTokens": 9785,
+      "outputTokens": 35,
+      "createdAt": "2026-02-02T11:16:37.245Z"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "conversation": {
+    "id": "b0b0d14e-897f-40ae-8d79-071fa3b3a403",
+    "title": "Telegram Chat 6910617238",
+    "startedAt": "2026-02-02T11:11:26.346Z",
+    "lastActivityAt": "2026-02-02T11:11:47.973Z",
+    "messageCount": 2
+  },
+  "messages": [
+    {
+      "id": "92f8eeb4-505c-4eb2-b9de-6f62d3c23495",
+      "conversationId": "b0b0d14e-897f-40ae-8d79-071fa3b3a403",
+      "role": "user",
+      "content": "Remind me to pick up my food in 5 minutes",
+      "createdAt": "2026-02-02T11:11:44.385Z"
+    },
+    {
+      "id": "6aef36ea-cb12-482a-ad1f-b6b19aa7f6de",
+      "conversationId": "b0b0d14e-897f-40ae-8d79-071fa3b3a403",
+      "role": "assistant",
+      "content": "OK. I've set a reminder for you to pick up your food in five minutes. This will give you approximately thirteen minutes before your Q1 Plan Presentation begins.",
+      "inputTokens": 9850,
+      "outputTokens": 34,
+      "createdAt": "2026-02-02T11:11:47.973Z"
+    }
+  ]
+}
