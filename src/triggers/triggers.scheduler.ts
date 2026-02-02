@@ -167,10 +167,16 @@ const calculateNextInvocation = (trigger: Trigger, afterTime: Date = new Date())
 
   if (trigger.schedule.type === 'once') {
     const at = new Date(trigger.schedule.at);
-    // For one-time triggers, only return if it's in the future
+    // For one-time triggers in the future, return the time
     if (at > afterTime) {
       return at;
     }
+    // For one-time triggers in the past that never fired, return the time
+    // so catch-up logic can decide whether to fire
+    if (trigger.invocationCount === 0) {
+      return at;
+    }
+    // Already fired or too old
     return null;
   }
 
