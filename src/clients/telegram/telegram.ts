@@ -1,10 +1,11 @@
-import { Bot } from 'grammy';
+import { Bot, InputFile } from 'grammy';
 import type { Context } from 'grammy';
 import type { Knex } from 'knex';
 
 import type { Services } from '../../services/services.ts';
 import { DatabaseService } from '../../database/database.ts';
 import { OrchestratorService } from '../../orchestrator/orchestrator.ts';
+import { getConversation, getMessages } from '../../orchestrator/orchestrator.store.ts';
 import { PersonalityService } from '../../personality/personality.ts';
 import type { Config } from '../../config/config.ts';
 
@@ -140,6 +141,7 @@ class TelegramClientService {
     this.#bot.command('new', this.#handleNew);
     this.#bot.command('help', this.#handleHelp);
     this.#bot.command('id', this.#handleId);
+    this.#bot.command('debug', this.#handleDebug);
 
     // Message handler
     this.#bot.on('message:text', this.#handleMessage);
@@ -215,6 +217,51 @@ class TelegramClientService {
     } else {
       await ctx.reply('No conversation found for this chat. Send a message to start one.');
     }
+  };
+
+  /**
+   * Handles the /debug command - exports the current conversation as JSON.
+   */
+  #handleDebug = async (ctx: Context): Promise<void> => {
+    const chatId = ctx.chat?.id;
+
+    if (!chatId) {
+      await ctx.reply('❌ Unable to determine chat ID');
+      return;
+    }
+
+    const existing = await getTelegramChat(this.#db(), chatId);
+    if (!existing) {
+      await ctx.reply('No conversation found for this chat. Send a message to start one.');
+      return;
+    }
+
+    const conversation = await getConversation(this.#db(), existing.conversationId);
+    if (!conversation) {
+      await ctx.reply('❌ Conversation not found in database.');
+      return;
+    }
+
+    const messages = await getMessages(this.#db(), existing.conversationId);
+
+    // Parse toolCalls JSON for better readability
+    const messagesWithParsedToolCalls = messages.map((msg) => ({
+      ...msg,
+      toolCalls: msg.toolCalls ? JSON.parse(msg.toolCalls) : undefined,
+    }));
+
+    const debugData = {
+      conversation,
+      messages: messagesWithParsedToolCalls,
+    };
+
+    const json = JSON.stringify(debugData, null, 2);
+    const buffer = Buffer.from(json, 'utf-8');
+    const filename = `conversation-${existing.conversationId}.json`;
+
+    await ctx.replyWithDocument(new InputFile(buffer, filename), {
+      caption: `🔍 Debug export for conversation ${existing.conversationId}`,
+    });
   };
 
   /**
