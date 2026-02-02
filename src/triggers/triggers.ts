@@ -232,11 +232,7 @@ class TriggerService {
 
       // Schedule if running
       if (this.#running && updatedTrigger) {
-        console.log('[TriggerService.create] Scheduling trigger:', updatedTrigger.name, 'at', nextInvocation.toISOString());
-        const scheduled = this.#scheduler.schedule(updatedTrigger);
-        console.log('[TriggerService.create] Scheduled:', scheduled);
-      } else {
-        console.log('[TriggerService.create] Not scheduling - running:', this.#running);
+        this.#scheduler.schedule(updatedTrigger);
       }
 
       return updatedTrigger ?? trigger;

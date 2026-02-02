@@ -108,6 +108,10 @@ class TelegramClientService {
       telegramClient: this,
     });
 
+    // Register the configured TriggerService in the Services container
+    // This is crucial so that tools can access the same instance via services.get(TriggerService)
+    this.#services.set(TriggerService, this.#triggerService);
+
     // Create bot
     this.#bot = new Bot(this.#config.botToken);
     this.#setupHandlers();

@@ -217,30 +217,24 @@ class TriggerScheduler {
    * Cancels any existing timer for this trigger.
    */
   schedule = (trigger: Trigger): boolean => {
-    console.log('[TriggerScheduler.schedule] Trigger:', trigger.name, 'status:', trigger.status);
-
     // Cancel existing timer if any
     this.cancel(trigger.id);
 
     // Only schedule active triggers
     if (trigger.status !== 'active') {
-      console.log('[TriggerScheduler.schedule] Not active, skipping');
       return false;
     }
 
     // Calculate when to fire
     const nextTime = calculateNextInvocation(trigger);
     if (!nextTime) {
-      console.log('[TriggerScheduler.schedule] No next time, skipping');
       return false;
     }
 
     const delay = nextTime.getTime() - Date.now();
-    console.log('[TriggerScheduler.schedule] Next time:', nextTime.toISOString(), 'delay:', delay, 'ms');
 
     // If delay is negative or zero, fire immediately
     if (delay <= 0) {
-      console.log('[TriggerScheduler.schedule] Firing immediately');
       // Fire asynchronously to avoid blocking
       setImmediate(() => {
         void this.#onFire(trigger.id);
@@ -248,7 +242,6 @@ class TriggerScheduler {
       return true;
     }
 
-    console.log('[TriggerScheduler.schedule] Setting timer for', delay, 'ms');
     // Schedule the timer
     const timer = setTimeout(() => {
       this.#timers.delete(trigger.id);

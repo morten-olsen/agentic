@@ -124,25 +124,17 @@ const routeAfterRouter = (state: OrchestratorState): 'risk_gate' | 'end' => {
  * Determines the next step after risk gate evaluation.
  */
 const routeAfterRiskGate = (state: OrchestratorState): 'tools' | 'interrupt' | 'router' => {
-  // Debug logging
-  console.log('[routeAfterRiskGate] interruptRequired:', state.interruptRequired);
-  console.log('[routeAfterRiskGate] approvedToolCalls:', state.approvedToolCalls?.length ?? 0);
-  console.log('[routeAfterRiskGate] pendingToolCall:', state.pendingToolCall?.name ?? 'none');
-
   // If an interrupt is required, halt and wait for approval
   if (state.interruptRequired) {
-    console.log('[routeAfterRiskGate] → interrupt');
     return 'interrupt';
   }
 
   // If we have approved tool calls, execute them
   if (state.approvedToolCalls && state.approvedToolCalls.length > 0) {
-    console.log('[routeAfterRiskGate] → tools');
     return 'tools';
   }
 
   // No tool calls to process (shouldn't normally happen)
-  console.log('[routeAfterRiskGate] → router (fallback)');
   return 'router';
 };
 
@@ -178,12 +170,9 @@ const createFilteredToolNode = (tools: DynamicStructuredTool[]) => {
   const toolNode = new ToolNode(tools);
 
   return async (state: OrchestratorState): Promise<Partial<OrchestratorState>> => {
-    console.log('[toolNode] Starting tool execution');
-
     // Get the last message with tool calls
     const lastMessage = state.messages[state.messages.length - 1];
     if (!lastMessage || !('tool_calls' in lastMessage)) {
-      console.log('[toolNode] No tool calls to execute');
       return {};
     }
 
@@ -195,15 +184,8 @@ const createFilteredToolNode = (tools: DynamicStructuredTool[]) => {
     const filteredToolCalls = originalToolCalls.filter((tc) => approvedNames.has(tc.name) || approvedNames.size === 0);
 
     if (filteredToolCalls.length === 0) {
-      console.log('[toolNode] No approved tool calls to execute');
       return {};
     }
-
-    console.log(
-      '[toolNode] Executing %d tools: %s',
-      filteredToolCalls.length,
-      filteredToolCalls.map((tc) => tc.name).join(', '),
-    );
 
     // Create a new AIMessage with only approved tool calls.
     // IMPORTANT: We must construct a proper AIMessage instance, not a plain object,
@@ -218,22 +200,15 @@ const createFilteredToolNode = (tools: DynamicStructuredTool[]) => {
 
     // ToolNode expects { messages: BaseMessage[] } format
     const messagesForToolNode = [...state.messages.slice(0, -1), filteredMessage];
+    const result = await toolNode.invoke({ messages: messagesForToolNode });
 
-    try {
-      const result = await toolNode.invoke({ messages: messagesForToolNode });
-      console.log('[toolNode] Tool execution completed, result messages:', result.messages?.length ?? 0);
-
-      // Clear the approved list after execution
-      return {
-        ...result,
-        approvedToolCalls: [],
-        pendingToolCall: null,
-        interruptRequired: false,
-      };
-    } catch (error) {
-      console.error('[toolNode] Tool execution failed:', error);
-      throw error;
-    }
+    // Clear the approved list after execution
+    return {
+      ...result,
+      approvedToolCalls: [],
+      pendingToolCall: null,
+      interruptRequired: false,
+    };
   };
 };
 

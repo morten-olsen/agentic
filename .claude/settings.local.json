@@ -37,7 +37,8 @@
       "Bash(kubectl get pods:*)",
       "Bash(kubectl cp:*)",
       "Bash(kubectl exec:*)",
-      "Bash(kubectl logs:*)"
+      "Bash(kubectl logs:*)",
+      "Bash(pnpm exec eslint:*)"
     ]
   }
 }
