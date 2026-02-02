@@ -1,0 +1,217 @@
+{
+  "conversation": {
+    "id": "3cfb913d-3a8f-4d60-8592-d99c79a50bc5",
+    "title": "Telegram Chat 6910617238",
+    "startedAt": "2026-02-02T13:31:02.154Z",
+    "lastActivityAt": "2026-02-02T13:35:56.988Z",
+    "messageCount": 6
+  },
+  "messages": [
+    {
+      "id": "f34e2383-21a3-4910-9c63-31a37fb411b9",
+      "conversationId": "3cfb913d-3a8f-4d60-8592-d99c79a50bc5",
+      "role": "user",
+      "content": "Which sheduled triggers do I have?",
+      "createdAt": "2026-02-02T13:31:26.468Z"
+    },
+    {
+      "id": "98b3b1d9-2629-43d1-864a-fa2d0fc0380b",
+      "conversationId": "3cfb913d-3a8f-4d60-8592-d99c79a50bc5",
+      "role": "assistant",
+      "content": "You have three active scheduled triggers:\n\n1.  **calendar-lookahead**: Runs every hour (next at 2:00 PM) to check for upcoming calendar events and notify you of anything starting soon.\n2.  **daily-briefing**: Runs at 8:00 AM on weekdays (next at 8:00 AM tomorrow) to provide a summary of your calendar, tasks, and reminders.\n3.  **stale-followups**: Runs daily at 9:00 AM (next at 9:00 AM tomorrow) to review your contacts and tasks for any overdue follow-ups.\n\nThere is also a completed one-time reminder for \"Close the door\" from earlier today.",
+      "toolCalls": [
+        {
+          "name": "triggers.list_triggers",
+          "args": {
+            "limit": 50
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.list_triggers_tSdZAol9mE3er35dU2ZJ"
+        }
+      ],
+      "inputTokens": 10819,
+      "outputTokens": 152,
+      "createdAt": "2026-02-02T13:31:31.122Z"
+    },
+    {
+      "id": "7f1ea9a6-aaaf-46c5-8021-6b6bcc099783",
+      "conversationId": "3cfb913d-3a8f-4d60-8592-d99c79a50bc5",
+      "role": "user",
+      "content": "Remind me to close the door in 5 minutes",
+      "createdAt": "2026-02-02T13:32:13.462Z"
+    },
+    {
+      "id": "603e0414-1cec-4fab-b029-aee28474be25",
+      "conversationId": "3cfb913d-3a8f-4d60-8592-d99c79a50bc5",
+      "role": "assistant",
+      "content": "I have set a reminder to close the door in 5 minutes (at 1:42 PM).",
+      "toolCalls": [
+        {
+          "name": "triggers.list_triggers",
+          "args": {
+            "limit": 50
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.list_triggers_tSdZAol9mE3er35dU2ZJ"
+        },
+        {
+          "name": "triggers.create_trigger",
+          "args": {
+            "name": "Close the door reminder",
+            "setupContext": "User requested a reminder to close the door in 5 minutes.",
+            "schedule": {
+              "type": "once",
+              "at": "2026-02-02T13:42:00Z"
+            },
+            "goal": "Remind User to close the door."
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.create_trigger_YY4B8sTj7P1eDHsBZwAt"
+        },
+        {
+          "name": "triggers.update_trigger",
+          "args": {
+            "name": "Close the door reminder (New)",
+            "schedule": {
+              "at": "2026-02-02T13:42:00Z",
+              "type": "once"
+            },
+            "status": "active",
+            "setupContext": "User requested a new reminder to close the door in 5 minutes.",
+            "goal": "Remind User to close the door.",
+            "triggerId": "d6ab96aa-5c2d-4211-9c6a-ffc3282d788f"
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.update_trigger_npQiusHp0G9ZFiAnWY0S"
+        }
+      ],
+      "inputTokens": 5511,
+      "outputTokens": 22,
+      "createdAt": "2026-02-02T13:32:27.280Z"
+    },
+    {
+      "id": "c79dbf25-cada-4586-9142-b00c3d66e34d",
+      "conversationId": "3cfb913d-3a8f-4d60-8592-d99c79a50bc5",
+      "role": "user",
+      "content": "My time zone is Amsterdam",
+      "createdAt": "2026-02-02T13:35:46.424Z"
+    },
+    {
+      "id": "73834b22-92dd-4e46-aea7-6addd606ea0a",
+      "conversationId": "3cfb913d-3a8f-4d60-8592-d99c79a50bc5",
+      "role": "assistant",
+      "content": "I apologize, but I am currently unable to update your identity settings directly. However, I have noted that your timezone is Amsterdam (CET/CEST). \n\nSince Amsterdam is currently at UTC+1, your local time is **2:37 PM**. I will ensure all future times and reminders are communicated to you using this offset.",
+      "toolCalls": [
+        {
+          "name": "triggers.list_triggers",
+          "args": {
+            "limit": 50
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.list_triggers_tSdZAol9mE3er35dU2ZJ"
+        },
+        {
+          "name": "triggers.create_trigger",
+          "args": {
+            "name": "Close the door reminder",
+            "setupContext": "User requested a reminder to close the door in 5 minutes.",
+            "schedule": {
+              "type": "once",
+              "at": "2026-02-02T13:42:00Z"
+            },
+            "goal": "Remind User to close the door."
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.create_trigger_YY4B8sTj7P1eDHsBZwAt"
+        },
+        {
+          "name": "triggers.update_trigger",
+          "args": {
+            "name": "Close the door reminder (New)",
+            "schedule": {
+              "at": "2026-02-02T13:42:00Z",
+              "type": "once"
+            },
+            "status": "active",
+            "setupContext": "User requested a new reminder to close the door in 5 minutes.",
+            "goal": "Remind User to close the door.",
+            "triggerId": "d6ab96aa-5c2d-4211-9c6a-ffc3282d788f"
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.update_trigger_npQiusHp0G9ZFiAnWY0S"
+        },
+        {
+          "name": "triggers.list_triggers",
+          "args": {
+            "limit": 50
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.list_triggers_tSdZAol9mE3er35dU2ZJ"
+        },
+        {
+          "name": "triggers.list_triggers",
+          "args": {
+            "limit": 50
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.list_triggers_tSdZAol9mE3er35dU2ZJ"
+        },
+        {
+          "name": "triggers.create_trigger",
+          "args": {
+            "name": "Close the door reminder",
+            "setupContext": "User requested a reminder to close the door in 5 minutes.",
+            "schedule": {
+              "type": "once",
+              "at": "2026-02-02T13:42:00Z"
+            },
+            "goal": "Remind User to close the door."
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.create_trigger_YY4B8sTj7P1eDHsBZwAt"
+        },
+        {
+          "name": "triggers.update_trigger",
+          "args": {
+            "name": "Close the door reminder (New)",
+            "schedule": {
+              "at": "2026-02-02T13:42:00Z",
+              "type": "once"
+            },
+            "status": "active",
+            "setupContext": "User requested a new reminder to close the door in 5 minutes.",
+            "goal": "Remind User to close the door.",
+            "triggerId": "d6ab96aa-5c2d-4211-9c6a-ffc3282d788f"
+          },
+          "type": "tool_call",
+          "id": "tool_triggers.update_trigger_npQiusHp0G9ZFiAnWY0S"
+        },
+        {
+          "name": "user_model.update_identity",
+          "args": {
+            "timezone": "Europe/Amsterdam"
+          },
+          "type": "tool_call",
+          "id": "tool_user_model.update_identity_bBTzcAD2yuFat5OkWLth"
+        },
+        {
+          "name": "user_model.get_identity",
+          "args": {},
+          "type": "tool_call",
+          "id": "tool_user_model.get_identity_gIGMQXOspguA4FQuuLfK"
+        },
+        {
+          "name": "user_model.update_identity",
+          "args": {
+            "timezone": "Europe/Amsterdam"
+          },
+          "type": "tool_call",
+          "id": "tool_user_model.update_identity_6FkjiNSBZIS0L0aFMXtU"
+        }
+      ],
+      "inputTokens": 5978,
+      "outputTokens": 68,
+      "createdAt": "2026-02-02T13:35:56.988Z"
+    }
+  ]
+}
