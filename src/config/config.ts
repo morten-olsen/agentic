@@ -168,6 +168,39 @@ const configSchema = convict({
       env: 'GLADOS_MAX_INTERRUPTIONS_PER_HOUR',
     },
   },
+
+  triggers: {
+    enabled: {
+      doc: 'Enable trigger system',
+      format: Boolean,
+      default: true,
+      env: 'GLADOS_TRIGGERS_ENABLED',
+    },
+    catchUpMissed: {
+      doc: 'Fire missed triggers on startup',
+      format: Boolean,
+      default: true,
+      env: 'GLADOS_TRIGGERS_CATCH_UP',
+    },
+    maxCatchUpAgeMs: {
+      doc: 'Max age in ms for catch-up (default: 1 hour)',
+      format: 'int',
+      default: 3600000,
+      env: 'GLADOS_TRIGGERS_MAX_CATCH_UP_AGE',
+    },
+    maxConsecutiveFailures: {
+      doc: 'Max consecutive failures before marking trigger as failed',
+      format: 'int',
+      default: 3,
+      env: 'GLADOS_TRIGGERS_MAX_FAILURES',
+    },
+    maxTriggersPerUser: {
+      doc: 'Maximum number of triggers per user',
+      format: 'int',
+      default: 100,
+      env: 'GLADOS_TRIGGERS_MAX_COUNT',
+    },
+  },
 });
 
 /**
@@ -210,6 +243,13 @@ type Config = {
     quietHoursStart: string;
     quietHoursEnd: string;
     maxInterruptionsPerHour: number;
+  };
+  triggers: {
+    enabled: boolean;
+    catchUpMissed: boolean;
+    maxCatchUpAgeMs: number;
+    maxConsecutiveFailures: number;
+    maxTriggersPerUser: number;
   };
 };
 

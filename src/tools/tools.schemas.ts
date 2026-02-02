@@ -57,6 +57,9 @@ const toolContextSchema = z.object({
  */
 type ToolContext = z.infer<typeof toolContextSchema> & {
   services: Services;
+  // Trigger context (present when running from a trigger invocation)
+  triggerId?: string;
+  triggerName?: string;
 };
 
 /**

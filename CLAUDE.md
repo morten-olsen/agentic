@@ -15,6 +15,7 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 **Key Documentation:**
 - **Spec**: `spec/agent.md` - Technical specification (types, schemas, implementation phases)
 - **Telegram Spec**: `spec/telegram.md` - Telegram bot integration specification
+- **Triggers Spec**: `spec/triggers.md` - Trigger system specification
 - **Architecture**: `docs/agent-architecture.md` - Conceptual guide (how the agent thinks)
 - **External Clients**: `docs/external-clients.md` - Guide for building external client integrations
 - **Coding Standards**: `docs/coding-standards.md` - TypeScript conventions
@@ -131,11 +132,13 @@ src/tasks/
 └── tasks.test.ts          # Unit tests
 ```
 
-### Proactive Modules (Phase 6)
+### Proactive Modules (Phase 6 - DEPRECATED)
+
+**Note**: The proactive scheduler is deprecated in favor of the new Trigger System (see below).
 
 ```
 src/proactive/
-├── proactive.ts           # ProactiveScheduler service
+├── proactive.ts           # ProactiveScheduler service (deprecated)
 ├── proactive.schemas.ts   # Check, Run, Result types
 ├── proactive.store.ts     # Check and run persistence
 ├── proactive.checks.ts    # Built-in check implementations
@@ -143,6 +146,25 @@ src/proactive/
 ├── proactive.cli.ts       # Entry point (pnpm proactive)
 └── proactive.test.ts      # Unit tests
 ```
+
+### Trigger System (replaces ProactiveScheduler)
+
+```
+src/triggers/
+├── triggers.ts            # Main TriggerService class
+├── triggers.schemas.ts    # Zod schemas (schedule, trigger, etc.)
+├── triggers.store.ts      # Database CRUD operations
+├── triggers.scheduler.ts  # In-memory timer management
+├── triggers.errors.ts     # Custom error classes
+└── triggers.test.ts       # Unit tests
+```
+
+The trigger system provides agent-managed scheduled invocations:
+- **Schedules**: One-time (`at` datetime) or recurring (`cron` expression)
+- **Agent tools**: `create_trigger`, `update_trigger`, `delete_trigger`, `list_triggers`, `notify`
+- **Self-management**: Triggers can update or delete themselves
+- **Notifications**: Background triggers can notify users via Telegram using the `notify` tool
+- **Pre-installed triggers**: `daily-briefing`, `calendar-lookahead`, `stale-followups`
 
 ### Notification Modules (Phase 6)
 

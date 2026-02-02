@@ -10,6 +10,7 @@ import { ToolRegistry } from '../tools/tools.ts';
 import { toLangChainTools } from '../tools/adapters/adapters.langchain.ts';
 import { registerBuiltinTools } from '../tools/builtin/builtin.ts';
 import { MemoryService } from '../memory/memory.ts';
+import type { TriggerContext } from '../triggers/triggers.schemas.ts';
 
 import type {
   OrchestratorConfigInput,
@@ -745,6 +746,104 @@ class OrchestratorService {
       yield* this.#resumeAfterApproval(resolvedInterrupt);
     } else {
       yield* this.#handleDeniedTool(resolvedInterrupt);
+    }
+  };
+
+  /**
+   * Invokes the orchestrator in background mode for trigger-initiated conversations.
+   * Creates a new conversation, runs the agent with the given goal, and returns the conversation ID.
+   * The agent runs non-interactively and can use the notify tool to communicate with the user.
+   */
+  invokeBackground = async (goal: string, triggerContext: TriggerContext): Promise<string> => {
+    this.#ensureConfigured();
+
+    // Create a new conversation for this trigger invocation
+    const conversationId = await this.startConversation({
+      title: `Trigger: ${triggerContext.triggerName}`,
+    });
+
+    try {
+      // Build system prompt with trigger context
+      const personality = this.#services.get(PersonalityService);
+      const contextBuilder = this.#services.get(ContextBuilderService);
+      const context = await contextBuilder.buildContext();
+      const systemPrompt = await personality.buildSystemPrompt(context, 'default', triggerContext);
+
+      // Get tools as LangChain tools with trigger context
+      const toolContext = {
+        userId: 'default',
+        conversationId,
+        services: this.#services,
+        triggerId: triggerContext.triggerId,
+        triggerName: triggerContext.triggerName,
+      };
+      const tools = toLangChainTools(this.#toolRegistry as ToolRegistry, toolContext);
+
+      // Create and compile graph
+      const graph = createOrchestratorGraph(
+        this.#llm as ChatOpenAI,
+        systemPrompt,
+        tools,
+        this.#toolRegistry as ToolRegistry,
+        undefined,
+        this.#memoryService ?? undefined,
+      );
+      const compiledGraph = graph.compile({
+        checkpointer: this.#checkpointer as DatabaseCheckpointer,
+      });
+
+      // Store the goal as a user message
+      await addMessage(this.#db(), conversationId, {
+        role: 'user',
+        content: goal,
+      });
+
+      // Run the graph with the goal
+      const result = await compiledGraph.invoke(
+        {
+          conversationId,
+          messages: [new HumanMessage(goal)],
+          turnCount: 0,
+          maxTurns: 20,
+          turnLimitReached: false,
+        },
+        {
+          configurable: { thread_id: conversationId },
+          recursionLimit: 150,
+        },
+      );
+
+      // Extract and store the response
+      const lastMessage = result.messages[result.messages.length - 1];
+      if (lastMessage && 'content' in lastMessage) {
+        const responseContent =
+          typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
+
+        let toolCalls: string | undefined;
+        if ('tool_calls' in lastMessage) {
+          const aiMessage = lastMessage as AIMessage;
+          if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+            toolCalls = JSON.stringify(aiMessage.tool_calls);
+          }
+        }
+
+        const tokenUsage =
+          lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;
+
+        await addMessage(this.#db(), conversationId, {
+          role: 'assistant',
+          content: responseContent,
+          toolCalls,
+          inputTokens: tokenUsage?.input_tokens,
+          outputTokens: tokenUsage?.output_tokens,
+        });
+      }
+
+      console.log(`Background invocation completed for trigger: ${triggerContext.triggerName}`);
+      return conversationId;
+    } catch (error) {
+      console.error(`Background invocation failed for trigger ${triggerContext.triggerName}:`, error);
+      throw error;
     }
   };
 

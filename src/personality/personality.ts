@@ -1,6 +1,7 @@
 import type { Services } from '../services/services.ts';
 import { DatabaseService } from '../database/database.ts';
 import type { AgentContext } from '../context/context.ts';
+import type { TriggerContext } from '../triggers/triggers.schemas.ts';
 
 import type { PersonalityConfig, CreatePersonalityInput, UpdatePersonalityInput } from './personality.schemas.ts';
 import {
@@ -74,9 +75,13 @@ class PersonalityService {
   /**
    * Builds the system prompt from the current config and optional context.
    */
-  buildSystemPrompt = async (context?: AgentContext, configId = 'default'): Promise<string> => {
+  buildSystemPrompt = async (
+    context?: AgentContext,
+    configId = 'default',
+    triggerContext?: TriggerContext,
+  ): Promise<string> => {
     const config = await this.getConfig(configId);
-    return buildSystemPrompt(config, context);
+    return buildSystemPrompt(config, context, triggerContext);
   };
 
   /**

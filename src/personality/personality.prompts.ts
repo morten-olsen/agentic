@@ -1,4 +1,5 @@
 import type { AgentContext } from '../context/context.ts';
+import type { TriggerContext } from '../triggers/triggers.schemas.ts';
 
 import type { PersonalityConfig, Style, Traits } from './personality.schemas.ts';
 
@@ -189,9 +190,51 @@ const generateExamplesSection = (examples: PersonalityConfig['examples']): strin
 };
 
 /**
+ * Generates trigger-specific instructions when running from a trigger invocation.
+ */
+const generateTriggerInstructions = (triggerContext: TriggerContext): string => {
+  const lines: string[] = [
+    '## Trigger Mode',
+    '',
+    'You are running from a scheduled trigger. The user will not see this conversation directly.',
+    '',
+    `**Your goal:** ${triggerContext.goal}`,
+  ];
+
+  if (triggerContext.setupContext) {
+    lines.push(`**Context:** ${triggerContext.setupContext}`);
+  }
+
+  lines.push(`**Trigger name:** ${triggerContext.triggerName}`);
+  lines.push(`**Invocation #:** ${triggerContext.invocationCount}`);
+
+  if (triggerContext.schedule.type === 'cron') {
+    lines.push(`**Schedule:** ${triggerContext.schedule.expression} (recurring)`);
+  } else {
+    lines.push(`**Schedule:** One-time trigger`);
+  }
+
+  lines.push('');
+  lines.push('**Instructions:**');
+  lines.push('- If you discover something the user should know, use the `notify` tool to send them a message.');
+  lines.push(
+    '- If this trigger is no longer needed, use `delete_trigger` (no ID needed - it will delete this trigger).',
+  );
+  lines.push('- If the trigger parameters need adjustment, use `update_trigger` (no ID needed).');
+  lines.push('- You have access to all normal tools plus trigger management and notify tools.');
+  lines.push('- Only notify if you have something meaningful to share. Do not notify just to confirm the trigger ran.');
+
+  return lines.join('\n');
+};
+
+/**
  * Builds the complete system prompt from personality config and context.
  */
-const buildSystemPrompt = (config: PersonalityConfig, context?: AgentContext): string => {
+const buildSystemPrompt = (
+  config: PersonalityConfig,
+  context?: AgentContext,
+  triggerContext?: TriggerContext,
+): string => {
   const sections: string[] = [];
 
   // Identity
@@ -234,6 +277,11 @@ const buildSystemPrompt = (config: PersonalityConfig, context?: AgentContext): s
     }
   }
 
+  // Trigger-specific instructions
+  if (triggerContext) {
+    sections.push(generateTriggerInstructions(triggerContext));
+  }
+
   return sections.join('\n\n');
 };
 
@@ -244,4 +292,5 @@ export {
   generateContextInstructions,
   generateTopicGuidelines,
   generateExamplesSection,
+  generateTriggerInstructions,
 };
