@@ -190,6 +190,7 @@ describe('PersonalityService', () => {
         recentContacts: [],
         recentTopics: [],
         pendingTasks: [],
+        dayPlan: null,
       };
 
       const prompt = await personality.buildSystemPrompt(context);

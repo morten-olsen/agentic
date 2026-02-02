@@ -5,6 +5,7 @@ import { contactSchema } from '../contacts/contacts.schemas.ts';
 import { locationSchema } from '../location/location.schemas.ts';
 import { calendarEventSchema } from '../calendar/calendar.schemas.ts';
 import { pendingTaskContextSchema } from '../tasks/tasks.schemas.ts';
+import { dayPlanContextSchema } from '../day-planner/day-planner.schemas.ts';
 
 // ============================================================================
 // Time of Day
@@ -88,6 +89,9 @@ const agentContextSchema = z.object({
       messageCount: z.number(),
     })
     .optional(),
+
+  // Day plan awareness
+  dayPlan: dayPlanContextSchema.nullable(),
 });
 
 type AgentContext = z.infer<typeof agentContextSchema>;

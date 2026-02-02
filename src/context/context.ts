@@ -1,10 +1,12 @@
 import type { Services } from '../services/services.ts';
 import type { PendingTaskContext } from '../tasks/tasks.schemas.ts';
+import type { DayPlanContext } from '../day-planner/day-planner.schemas.ts';
 import { UserModelService } from '../user-model/user-model.ts';
 import { LocationService } from '../location/location.ts';
 import { CalendarService } from '../calendar/calendar.ts';
 import { MemoryService } from '../memory/memory.ts';
 import { TaskService } from '../tasks/tasks.ts';
+import { DayPlanService } from '../day-planner/day-planner.ts';
 
 import type { AgentContext, LocationContext, CalendarAgentContext, UserContext } from './context.schemas.ts';
 
@@ -26,13 +28,15 @@ class ContextBuilderService {
    * Call this at the start of each interaction to give the agent a complete picture.
    */
   buildContext = async (now: Date = new Date()): Promise<AgentContext> => {
-    const [userContext, locationContext, calendarContext, recentTopics, pendingTasks] = await Promise.all([
-      this.#buildUserContext(),
-      this.#buildLocationContext(),
-      this.#buildCalendarContext(now),
-      this.#getRecentTopics(),
-      this.#getPendingTasks(),
-    ]);
+    const [userContext, locationContext, calendarContext, recentTopics, pendingTasks, dayPlanContext] =
+      await Promise.all([
+        this.#buildUserContext(),
+        this.#buildLocationContext(),
+        this.#buildCalendarContext(now),
+        this.#getRecentTopics(),
+        this.#getPendingTasks(),
+        this.#getDayPlanContext(),
+      ]);
 
     const userModel = this.#services.get(UserModelService);
     const identity = await userModel.getIdentity();
@@ -60,6 +64,9 @@ class ContextBuilderService {
 
       // No active conversation by default
       conversation: undefined,
+
+      // Day plan awareness
+      dayPlan: dayPlanContext,
     };
   };
 
@@ -160,6 +167,19 @@ class ContextBuilderService {
     } catch {
       // Task service may not be available yet, return empty array
       return [];
+    }
+  };
+
+  /**
+   * Gets the day plan context for today.
+   */
+  #getDayPlanContext = async (): Promise<DayPlanContext | null> => {
+    try {
+      const dayPlanService = this.#services.get(DayPlanService);
+      return await dayPlanService.getTodayPlanContext();
+    } catch {
+      // Day plan service may not be available yet, return null
+      return null;
     }
   };
 }

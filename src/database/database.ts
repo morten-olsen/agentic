@@ -17,6 +17,7 @@ import * as migration008 from './migrations/008_telegram_chats.ts';
 import * as migration009 from './migrations/009_tasks.ts';
 import * as migration010 from './migrations/010_proactive.ts';
 import * as migration011 from './migrations/011_notifications.ts';
+import * as migration012 from './migrations/012_day_planner.ts';
 
 type MigrationSource = {
   getMigrations: () => Promise<string[]>;
@@ -37,6 +38,7 @@ const createMigrationSource = (): MigrationSource => {
     '009_tasks': migration009,
     '010_proactive': migration010,
     '011_notifications': migration011,
+    '012_day_planner': migration012,
   };
 
   return {

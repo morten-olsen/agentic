@@ -9,6 +9,7 @@ import { registerLocationTools } from './location.ts';
 import { registerMemoryTools } from './memory.ts';
 import { registerTaskTools } from './tasks.ts';
 import { registerNotificationTools } from './notifications.ts';
+import { registerDayPlannerTools } from './day-planner.ts';
 
 /**
  * Registers all builtin tools with the registry.
@@ -26,6 +27,7 @@ const registerBuiltinTools = (registry: ToolRegistry): void => {
   registerMemoryTools(registry);
   registerTaskTools(registry);
   registerNotificationTools(registry);
+  registerDayPlannerTools(registry);
 };
 
 // Re-export individual tools for direct access
@@ -43,5 +45,6 @@ export { registerLocationTools } from './location.ts';
 export { registerMemoryTools } from './memory.ts';
 export { registerTaskTools } from './tasks.ts';
 export { registerNotificationTools } from './notifications.ts';
+export { registerDayPlannerTools } from './day-planner.ts';
 
 export { registerBuiltinTools };
