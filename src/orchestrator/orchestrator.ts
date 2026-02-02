@@ -292,19 +292,25 @@ class OrchestratorService {
       // Extract the response from the last message
       const lastMessage = result.messages[result.messages.length - 1];
       let responseContent = '';
-      let toolCalls: string | undefined;
 
       if (lastMessage && 'content' in lastMessage) {
         responseContent =
           typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
       }
 
-      if (lastMessage && 'tool_calls' in lastMessage) {
-        const aiMessage = lastMessage as AIMessage;
-        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
-          toolCalls = JSON.stringify(aiMessage.tool_calls);
+      // Collect tool_calls from all new AI messages (not just the last one)
+      // The last message might be a text response after tool execution
+      const newMessages = result.messages.slice(historyMessages.length);
+      const allToolCalls: Array<{ id?: string; name: string; args: Record<string, unknown> }> = [];
+      for (const msg of newMessages) {
+        if ('tool_calls' in msg) {
+          const aiMsg = msg as AIMessage;
+          if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
+            allToolCalls.push(...aiMsg.tool_calls);
+          }
         }
       }
+      const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
 
       // Yield tokens (for now, yield the whole response at once)
       if (responseContent) {
@@ -516,19 +522,24 @@ class OrchestratorService {
       // Extract response
       const lastMessage = result.messages[result.messages.length - 1];
       let responseContent = '';
-      let toolCalls: string | undefined;
 
       if (lastMessage && 'content' in lastMessage) {
         responseContent =
           typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
       }
 
-      if (lastMessage && 'tool_calls' in lastMessage) {
-        const aiMessage = lastMessage as AIMessage;
-        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
-          toolCalls = JSON.stringify(aiMessage.tool_calls);
+      // Collect tool_calls from all new AI messages (not just the last one)
+      const newMessages = result.messages.slice(checkpointMessages.length);
+      const allToolCalls: Array<{ id?: string; name: string; args: Record<string, unknown> }> = [];
+      for (const msg of newMessages) {
+        if ('tool_calls' in msg) {
+          const aiMsg = msg as AIMessage;
+          if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
+            allToolCalls.push(...aiMsg.tool_calls);
+          }
         }
       }
+      const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
 
       if (responseContent) {
         yield { type: 'token', content: responseContent };
@@ -647,19 +658,24 @@ class OrchestratorService {
       // Extract response
       const lastMessage = result.messages[result.messages.length - 1];
       let responseContent = '';
-      let toolCalls: string | undefined;
 
       if (lastMessage && 'content' in lastMessage) {
         responseContent =
           typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
       }
 
-      if (lastMessage && 'tool_calls' in lastMessage) {
-        const aiMessage = lastMessage as AIMessage;
-        if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
-          toolCalls = JSON.stringify(aiMessage.tool_calls);
+      // Collect tool_calls from all new AI messages (not just the last one)
+      const newMessages = result.messages.slice(checkpointMessages.length);
+      const allToolCalls: Array<{ id?: string; name: string; args: Record<string, unknown> }> = [];
+      for (const msg of newMessages) {
+        if ('tool_calls' in msg) {
+          const aiMsg = msg as AIMessage;
+          if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
+            allToolCalls.push(...aiMsg.tool_calls);
+          }
         }
       }
+      const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
 
       if (responseContent) {
         yield { type: 'token', content: responseContent };
@@ -819,13 +835,18 @@ class OrchestratorService {
         const responseContent =
           typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
 
-        let toolCalls: string | undefined;
-        if ('tool_calls' in lastMessage) {
-          const aiMessage = lastMessage as AIMessage;
-          if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
-            toolCalls = JSON.stringify(aiMessage.tool_calls);
+        // Collect tool_calls from all new AI messages (skip the initial HumanMessage)
+        const newMessages = result.messages.slice(1);
+        const allToolCalls: Array<{ id?: string; name: string; args: Record<string, unknown> }> = [];
+        for (const msg of newMessages) {
+          if ('tool_calls' in msg) {
+            const aiMsg = msg as AIMessage;
+            if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
+              allToolCalls.push(...aiMsg.tool_calls);
+            }
           }
         }
+        const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
 
         const tokenUsage =
           lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;

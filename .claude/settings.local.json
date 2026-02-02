@@ -31,7 +31,9 @@
       "Bash(pnpm conversation:*)",
       "Bash(pnpm test:conversation:*)",
       "Bash(npx prettier:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(pnpm conversation:test:*)",
+      "Bash(sqlite3:*)"
     ]
   }
 }
