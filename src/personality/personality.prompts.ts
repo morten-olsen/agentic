@@ -143,8 +143,10 @@ const generateContextInstructions = (context: AgentContext): string => {
   }
 
   // Time awareness
-  instructions.push(`Current time: ${context.now}`);
+  instructions.push(`User's timezone: ${context.timezone}`);
+  instructions.push(`Local time: ${context.localTime}`);
   instructions.push(`Time of day: ${context.timeOfDay}`);
+  instructions.push('Always display times to the user in their local timezone, not UTC.');
 
   if (!context.isWorkingHours) {
     instructions.push('Note: Outside of working hours.');

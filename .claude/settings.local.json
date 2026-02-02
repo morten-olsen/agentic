@@ -33,7 +33,11 @@
       "Bash(npx prettier:*)",
       "Bash(find:*)",
       "Bash(pnpm conversation:test:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(kubectl get pods:*)",
+      "Bash(kubectl cp:*)",
+      "Bash(kubectl exec:*)",
+      "Bash(kubectl logs:*)"
     ]
   }
 }

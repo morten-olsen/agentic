@@ -7,6 +7,7 @@ import { DatabaseService } from '../../database/database.ts';
 import { OrchestratorService } from '../../orchestrator/orchestrator.ts';
 import { getConversation, getMessages } from '../../orchestrator/orchestrator.store.ts';
 import { PersonalityService } from '../../personality/personality.ts';
+import { TriggerService } from '../../triggers/triggers.ts';
 import type { Config } from '../../config/config.ts';
 
 import type { TelegramConfig } from './telegram.schemas.ts';
@@ -62,6 +63,7 @@ class TelegramClientService {
   #config: TelegramConfig | null = null;
   #bot: Bot | null = null;
   #orchestrator: OrchestratorService | null = null;
+  #triggerService: TriggerService | null = null;
   #assistantName = 'GLaDOS';
   #pendingInterrupts = new Map<number, string>(); // chatId -> interruptId
 
@@ -97,6 +99,13 @@ class TelegramClientService {
         temperature: appConfig.llm.temperature,
         maxTokens: appConfig.llm.maxTokens,
       },
+    });
+
+    // Create and configure trigger service
+    this.#triggerService = new TriggerService(this.#services);
+    this.#triggerService.configure({
+      orchestrator: this.#orchestrator,
+      telegramClient: this,
     });
 
     // Create bot
@@ -451,7 +460,7 @@ class TelegramClientService {
   };
 
   /**
-   * Starts the bot (polling mode).
+   * Starts the bot (polling mode) and trigger service.
    */
   start = async (): Promise<void> => {
     if (!this.#bot) {
@@ -461,6 +470,11 @@ class TelegramClientService {
     console.log(`Starting ${this.#assistantName} Telegram bot...`);
     console.log(`Authorized user ID: ${this.#config?.ownerId}`);
 
+    // Start the trigger service first
+    if (this.#triggerService) {
+      await this.#triggerService.start();
+    }
+
     await this.#bot.start({
       onStart: (botInfo) => {
         console.log(`Bot started as @${botInfo.username}`);
@@ -469,9 +483,14 @@ class TelegramClientService {
   };
 
   /**
-   * Stops the bot.
+   * Stops the bot and trigger service.
    */
   stop = async (): Promise<void> => {
+    // Stop the trigger service
+    if (this.#triggerService) {
+      await this.#triggerService.stop();
+    }
+
     if (this.#bot) {
       await this.#bot.stop();
       console.log('Telegram bot stopped.');
