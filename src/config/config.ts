@@ -183,6 +183,18 @@ const configSchema = convict({
       env: 'GLADOS_HOMEASSISTANT_TOKEN',
       sensitive: true,
     },
+    calendarEntities: {
+      doc: 'Home Assistant calendar entity IDs to include in agenda (comma-separated)',
+      format: Array,
+      default: [],
+      env: 'GLADOS_HOMEASSISTANT_CALENDARS',
+    },
+    personEntity: {
+      doc: 'Home Assistant person entity ID for location tracking (e.g., person.morten)',
+      format: String,
+      default: '',
+      env: 'GLADOS_HOMEASSISTANT_PERSON_ENTITY',
+    },
   },
 
   triggers: {
@@ -263,6 +275,8 @@ type Config = {
   homeassistant: {
     url: string;
     token: string;
+    calendarEntities: string[];
+    personEntity: string;
   };
   triggers: {
     enabled: boolean;
@@ -448,6 +462,8 @@ Configuration:
   Home Assistant:
     URL: ${config.homeassistant.url || '(not set)'}
     Token: ${config.homeassistant.token ? '***configured***' : '(not set)'}
+    Calendars: ${config.homeassistant.calendarEntities.length > 0 ? config.homeassistant.calendarEntities.join(', ') : '(none)'}
+    Person Entity: ${config.homeassistant.personEntity || '(not set)'}
 
 Config files loaded:
 ${loaded.length > 0 ? loaded.map((f) => `  - ${f}`).join('\n') : '  (none)'}

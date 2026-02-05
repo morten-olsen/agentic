@@ -32,9 +32,7 @@ type ActivationOutput = z.infer<typeof activationOutputSchema>;
  * The actual activation is handled by the skill activation node in the graph,
  * but this tool definition is needed for the LLM to know about the skill.
  */
-const createActivationTool = (
-  skill: SkillDefinition,
-): ToolDefinition<z.infer<typeof defaultActivationInputSchema>, ActivationOutput> => {
+const createActivationTool = (skill: SkillDefinition): ToolDefinition => {
   const toolsList = skill.tools.map((t) => `- ${t.name}: ${t.description}`).join('\n');
 
   return {
@@ -233,14 +231,14 @@ const listSkillsTool: ToolDefinition<ListSkillsInput, ListSkillsOutput, ListSkil
  * Gets all skill management tools (not activation tools - those are per-skill).
  */
 const getSkillManagementTools = (): ToolDefinition[] => {
-  return [deactivateSkillTool, listSkillsTool];
+  return [deactivateSkillTool, listSkillsTool] as ToolDefinition[];
 };
 
 /**
  * Creates activation tools for all registered skills.
  */
 const createActivationTools = (registry: SkillRegistry): ToolDefinition[] => {
-  return registry.getAll().map((skill) => createActivationTool(skill));
+  return registry.getAll().map((skill) => createActivationTool(skill)) as ToolDefinition[];
 };
 
 // ============================================================================

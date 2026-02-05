@@ -1,10 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import { Services } from '../services/services.ts';
 import { createDatabaseService, DatabaseService } from '../database/database.ts';
 import { UserModelService } from '../user-model/user-model.ts';
 import { LocationService } from '../location/location.ts';
 import { CalendarService } from '../calendar/calendar.ts';
+import { ExternalServiceRegistry } from '../external/external.ts';
+import type { HomeAssistantClient, HaCalendarEvent, HaPersonState } from '../external/homeassistant/index.ts';
+import * as configModule from '../config/config.ts';
 
 import { ContextBuilderService } from './context.ts';
 
@@ -14,6 +17,7 @@ describe('ContextBuilderService', () => {
   let userModel: UserModelService;
   let location: LocationService;
   let calendar: CalendarService;
+  let externalServices: ExternalServiceRegistry;
 
   beforeEach(async () => {
     services = new Services();
@@ -24,10 +28,12 @@ describe('ContextBuilderService', () => {
     userModel = services.get(UserModelService);
     location = services.get(LocationService);
     calendar = services.get(CalendarService);
+    externalServices = services.get(ExternalServiceRegistry);
     contextBuilder = services.get(ContextBuilderService);
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await services.destroy();
   });
 
@@ -281,6 +287,422 @@ describe('ContextBuilderService', () => {
       expect(context.recentContacts).toHaveLength(0);
       expect(context.recentTopics).toHaveLength(0);
       expect(context.pendingTasks).toHaveLength(0);
+    });
+  });
+
+  describe('Home Assistant Calendar Federation', () => {
+    const createMockHaClient = (events: HaCalendarEvent[]): HomeAssistantClient => ({
+      connection: {} as HomeAssistantClient['connection'],
+      getConfig: vi.fn(),
+      getCalendarEvents: vi.fn().mockResolvedValue(events),
+      getPersonLocation: vi.fn().mockReturnValue(null),
+      disconnect: vi.fn(),
+    });
+
+    it('includes HA calendar events in agenda when configured', async () => {
+      // Register a mock HA service
+      const mockEvents: HaCalendarEvent[] = [
+        { start: '2024-01-15T14:00:00+00:00', end: '2024-01-15T15:00:00+00:00', summary: 'HA Meeting' },
+        { start: '2024-01-15', end: '2024-01-16', summary: 'HA All Day Event' },
+      ];
+
+      externalServices.register({
+        id: 'homeassistant',
+        name: 'Home Assistant',
+        description: 'Test HA service',
+        isConfigured: () => true,
+        createClient: async () => createMockHaClient(mockEvents),
+      });
+
+      // Mock config to have calendar entities using spyOn (works at runtime)
+      const originalConfig = configModule.getConfig();
+      vi.spyOn(configModule, 'getConfig').mockReturnValue({
+        ...originalConfig,
+        homeassistant: {
+          ...originalConfig.homeassistant,
+          url: 'http://localhost:8123',
+          token: 'test-token',
+          calendarEntities: ['calendar.test'],
+        },
+      });
+
+      // Create a fresh builder to use the mocked config
+      const freshBuilder = new ContextBuilderService(services);
+
+      const now = new Date('2024-01-15T10:00:00.000Z');
+      const context = await freshBuilder.buildContext(now);
+
+      expect(context.calendar.todayAgenda).toContain('From Home Assistant:');
+      expect(context.calendar.todayAgenda).toContain('HA Meeting');
+      expect(context.calendar.todayAgenda).toContain('HA All Day Event');
+    });
+
+    it('gracefully handles HA service not configured', async () => {
+      // No HA service registered - should still work
+      const now = new Date('2024-01-15T10:00:00.000Z');
+      const context = await contextBuilder.buildContext(now);
+
+      // Should not throw, just returns regular agenda
+      expect(context.calendar.todayAgenda).toBe('No events scheduled for today.');
+    });
+
+    it('gracefully handles HA service errors', async () => {
+      // Register a failing HA service
+      externalServices.register({
+        id: 'homeassistant',
+        name: 'Home Assistant',
+        description: 'Test HA service',
+        isConfigured: () => true,
+        createClient: async () => ({
+          connection: {} as HomeAssistantClient['connection'],
+          getConfig: vi.fn(),
+          getCalendarEvents: vi.fn().mockRejectedValue(new Error('HA down')),
+          disconnect: vi.fn(),
+        }),
+      });
+
+      const now = new Date('2024-01-15T10:00:00.000Z');
+      const context = await contextBuilder.buildContext(now);
+
+      // Should not throw, just returns regular agenda
+      expect(context.calendar.todayAgenda).toBe('No events scheduled for today.');
+    });
+
+    it('merges GLaDOS and HA events correctly', async () => {
+      // Create a GLaDOS event
+      await calendar.createEvent({
+        title: 'GLaDOS Meeting',
+        start: '2024-01-15T10:00:00.000Z',
+        end: '2024-01-15T11:00:00.000Z',
+        timezone: 'UTC',
+      });
+
+      // Register mock HA service with events
+      const mockEvents: HaCalendarEvent[] = [
+        { start: '2024-01-15T14:00:00+00:00', end: '2024-01-15T15:00:00+00:00', summary: 'HA Team Sync' },
+      ];
+
+      externalServices.register({
+        id: 'homeassistant',
+        name: 'Home Assistant',
+        description: 'Test HA service',
+        isConfigured: () => true,
+        createClient: async () => createMockHaClient(mockEvents),
+      });
+
+      // Mock config using spyOn (works at runtime)
+      const originalConfig = configModule.getConfig();
+      vi.spyOn(configModule, 'getConfig').mockReturnValue({
+        ...originalConfig,
+        homeassistant: {
+          ...originalConfig.homeassistant,
+          url: 'http://localhost:8123',
+          token: 'test-token',
+          calendarEntities: ['calendar.test'],
+        },
+      });
+
+      // Create a fresh builder to use the mocked config
+      const freshBuilder = new ContextBuilderService(services);
+
+      const now = new Date('2024-01-15T09:00:00.000Z');
+      const context = await freshBuilder.buildContext(now);
+
+      // Should have both GLaDOS and HA events
+      expect(context.calendar.todayAgenda).toContain('GLaDOS Meeting');
+      expect(context.calendar.todayAgenda).toContain('From Home Assistant:');
+      expect(context.calendar.todayAgenda).toContain('HA Team Sync');
+    });
+  });
+
+  describe('Home Assistant Location Tracking', () => {
+    const createMockHaClientWithLocation = (
+      personLocation: HaPersonState | null,
+      calendarEvents: HaCalendarEvent[] = [],
+    ): HomeAssistantClient => ({
+      connection: {} as HomeAssistantClient['connection'],
+      getConfig: vi.fn(),
+      getCalendarEvents: vi.fn().mockResolvedValue(calendarEvents),
+      getPersonLocation: vi.fn().mockReturnValue(personLocation),
+      disconnect: vi.fn(),
+    });
+
+    it('includes HA person location with GPS coordinates', async () => {
+      const mockPersonState: HaPersonState = {
+        entity_id: 'person.alice',
+        state: 'home',
+        attributes: {
+          latitude: 55.842970845,
+          longitude: 12.425845855,
+          gps_accuracy: 31,
+          source: 'device_tracker.pixel_9',
+          friendly_name: 'Alice',
+        },
+        last_updated: '2024-01-15T10:30:00Z',
+        last_changed: '2024-01-15T08:15:00Z',
+      };
+
+      externalServices.register({
+        id: 'homeassistant',
+        name: 'Home Assistant',
+        description: 'Test HA service',
+        isConfigured: () => true,
+        createClient: async () => createMockHaClientWithLocation(mockPersonState),
+      });
+
+      // Mock config with person entity
+      vi.mock('../config/config.ts', async (importOriginal) => {
+        const original = await importOriginal<typeof import('../config/config.ts')>();
+        return {
+          ...original,
+          getConfig: () => ({
+            ...original.getConfig(),
+            homeassistant: {
+              url: 'http://localhost:8123',
+              token: 'test-token',
+              calendarEntities: [],
+              personEntity: 'person.alice',
+            },
+          }),
+        };
+      });
+
+      const { ContextBuilderService: FreshContextBuilder } = await import('./context.ts');
+      const freshBuilder = new FreshContextBuilder(services);
+
+      const now = new Date('2024-01-15T10:00:00.000Z');
+      const context = await freshBuilder.buildContext(now);
+
+      // Should have HA location data
+      expect(context.location.atHome).toBe(true);
+      expect(context.location.confidence).toBe('exact');
+      expect(context.location.coordinates).toEqual({
+        latitude: 55.842970845,
+        longitude: 12.425845855,
+        accuracy: 31,
+      });
+      expect(context.location.lastLocationChange).toBe('2024-01-15T08:15:00Z');
+      expect(context.location.locationSource).toBe('device_tracker.pixel_9');
+    });
+
+    it('detects not_home state as traveling', async () => {
+      const mockPersonState: HaPersonState = {
+        entity_id: 'person.alice',
+        state: 'not_home',
+        attributes: {
+          latitude: 55.5,
+          longitude: 12.3,
+          gps_accuracy: 50,
+          source: 'device_tracker.phone',
+          friendly_name: 'Alice',
+        },
+        last_updated: '2024-01-15T10:30:00Z',
+        last_changed: '2024-01-15T09:00:00Z',
+      };
+
+      externalServices.register({
+        id: 'homeassistant',
+        name: 'Home Assistant',
+        description: 'Test HA service',
+        isConfigured: () => true,
+        createClient: async () => createMockHaClientWithLocation(mockPersonState),
+      });
+
+      vi.mock('../config/config.ts', async (importOriginal) => {
+        const original = await importOriginal<typeof import('../config/config.ts')>();
+        return {
+          ...original,
+          getConfig: () => ({
+            ...original.getConfig(),
+            homeassistant: {
+              url: 'http://localhost:8123',
+              token: 'test-token',
+              calendarEntities: [],
+              personEntity: 'person.alice',
+            },
+          }),
+        };
+      });
+
+      const { ContextBuilderService: FreshContextBuilder } = await import('./context.ts');
+      const freshBuilder = new FreshContextBuilder(services);
+
+      const context = await freshBuilder.buildContext(new Date('2024-01-15T10:00:00.000Z'));
+
+      expect(context.location.atHome).toBe(false);
+      expect(context.location.traveling).toBe(true);
+    });
+
+    it('detects work zone state', async () => {
+      const mockPersonState: HaPersonState = {
+        entity_id: 'person.alice',
+        state: 'work',
+        attributes: {
+          latitude: 55.6,
+          longitude: 12.4,
+          gps_accuracy: 20,
+          source: 'device_tracker.phone',
+          friendly_name: 'Alice',
+        },
+        last_updated: '2024-01-15T10:30:00Z',
+        last_changed: '2024-01-15T08:00:00Z',
+      };
+
+      externalServices.register({
+        id: 'homeassistant',
+        name: 'Home Assistant',
+        description: 'Test HA service',
+        isConfigured: () => true,
+        createClient: async () => createMockHaClientWithLocation(mockPersonState),
+      });
+
+      vi.mock('../config/config.ts', async (importOriginal) => {
+        const original = await importOriginal<typeof import('../config/config.ts')>();
+        return {
+          ...original,
+          getConfig: () => ({
+            ...original.getConfig(),
+            homeassistant: {
+              url: 'http://localhost:8123',
+              token: 'test-token',
+              calendarEntities: [],
+              personEntity: 'person.alice',
+            },
+          }),
+        };
+      });
+
+      const { ContextBuilderService: FreshContextBuilder } = await import('./context.ts');
+      const freshBuilder = new FreshContextBuilder(services);
+
+      const context = await freshBuilder.buildContext(new Date('2024-01-15T10:00:00.000Z'));
+
+      expect(context.location.atHome).toBe(false);
+      expect(context.location.atWork).toBe(true);
+      expect(context.location.traveling).toBe(false);
+    });
+
+    it('gracefully handles no person entity configured', async () => {
+      externalServices.register({
+        id: 'homeassistant',
+        name: 'Home Assistant',
+        description: 'Test HA service',
+        isConfigured: () => true,
+        createClient: async () => createMockHaClientWithLocation(null),
+      });
+
+      vi.mock('../config/config.ts', async (importOriginal) => {
+        const original = await importOriginal<typeof import('../config/config.ts')>();
+        return {
+          ...original,
+          getConfig: () => ({
+            ...original.getConfig(),
+            homeassistant: {
+              url: 'http://localhost:8123',
+              token: 'test-token',
+              calendarEntities: [],
+              personEntity: '', // Not configured
+            },
+          }),
+        };
+      });
+
+      const { ContextBuilderService: FreshContextBuilder } = await import('./context.ts');
+      const freshBuilder = new FreshContextBuilder(services);
+
+      const context = await freshBuilder.buildContext(new Date('2024-01-15T10:00:00.000Z'));
+
+      // Should fall back to inferred location (no GPS data)
+      expect(context.location.coordinates).toBeUndefined();
+      expect(context.location.lastLocationChange).toBeUndefined();
+      expect(context.location.locationSource).toBeUndefined();
+    });
+
+    it('gracefully handles HA client errors for person location', async () => {
+      externalServices.register({
+        id: 'homeassistant',
+        name: 'Home Assistant',
+        description: 'Test HA service',
+        isConfigured: () => true,
+        createClient: async () => {
+          throw new Error('HA connection failed');
+        },
+      });
+
+      vi.mock('../config/config.ts', async (importOriginal) => {
+        const original = await importOriginal<typeof import('../config/config.ts')>();
+        return {
+          ...original,
+          getConfig: () => ({
+            ...original.getConfig(),
+            homeassistant: {
+              url: 'http://localhost:8123',
+              token: 'test-token',
+              calendarEntities: [],
+              personEntity: 'person.alice',
+            },
+          }),
+        };
+      });
+
+      const { ContextBuilderService: FreshContextBuilder } = await import('./context.ts');
+      const freshBuilder = new FreshContextBuilder(services);
+
+      // Should not throw, falls back to inferred location
+      const context = await freshBuilder.buildContext(new Date('2024-01-15T10:00:00.000Z'));
+
+      expect(context.location.coordinates).toBeUndefined();
+      expect(context.location.confidence).toBe('inferred');
+    });
+
+    it('handles person state without GPS coordinates', async () => {
+      const mockPersonState: HaPersonState = {
+        entity_id: 'person.alice',
+        state: 'home',
+        attributes: {
+          // No GPS coordinates
+          friendly_name: 'Alice',
+        },
+        last_updated: '2024-01-15T10:30:00Z',
+        last_changed: '2024-01-15T08:15:00Z',
+      };
+
+      externalServices.register({
+        id: 'homeassistant',
+        name: 'Home Assistant',
+        description: 'Test HA service',
+        isConfigured: () => true,
+        createClient: async () => createMockHaClientWithLocation(mockPersonState),
+      });
+
+      vi.mock('../config/config.ts', async (importOriginal) => {
+        const original = await importOriginal<typeof import('../config/config.ts')>();
+        return {
+          ...original,
+          getConfig: () => ({
+            ...original.getConfig(),
+            homeassistant: {
+              url: 'http://localhost:8123',
+              token: 'test-token',
+              calendarEntities: [],
+              personEntity: 'person.alice',
+            },
+          }),
+        };
+      });
+
+      const { ContextBuilderService: FreshContextBuilder } = await import('./context.ts');
+      const freshBuilder = new FreshContextBuilder(services);
+
+      const context = await freshBuilder.buildContext(new Date('2024-01-15T10:00:00.000Z'));
+
+      // Should still detect home state but without coordinates
+      expect(context.location.atHome).toBe(true);
+      expect(context.location.coordinates).toBeUndefined();
+      // Confidence stays inferred since no GPS
+      expect(context.location.confidence).toBe('inferred');
+      // But staleness info is still available
+      expect(context.location.lastLocationChange).toBe('2024-01-15T08:15:00Z');
     });
   });
 });

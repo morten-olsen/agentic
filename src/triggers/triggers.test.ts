@@ -214,6 +214,8 @@ describe('calculateNextInvocation', () => {
       status: 'active',
       invocationCount: 0,
       consecutiveFailures: 0,
+      continuation: null,
+      continuationUpdatedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -232,6 +234,8 @@ describe('calculateNextInvocation', () => {
       status: 'active',
       invocationCount: 0,
       consecutiveFailures: 0,
+      continuation: null,
+      continuationUpdatedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -251,6 +255,8 @@ describe('calculateNextInvocation', () => {
       status: 'active',
       invocationCount: 1, // Already fired once
       consecutiveFailures: 0,
+      continuation: null,
+      continuationUpdatedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -269,6 +275,8 @@ describe('calculateNextInvocation', () => {
       invocationCount: 5,
       maxInvocations: 5,
       consecutiveFailures: 0,
+      continuation: null,
+      continuationUpdatedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -287,6 +295,8 @@ describe('calculateNextInvocation', () => {
       invocationCount: 0,
       endsAt: '2020-03-15T10:00:00Z',
       consecutiveFailures: 0,
+      continuation: null,
+      continuationUpdatedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -304,6 +314,8 @@ describe('calculateNextInvocation', () => {
       status: 'active',
       invocationCount: 0,
       consecutiveFailures: 0,
+      continuation: null,
+      continuationUpdatedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -476,10 +488,12 @@ describe('Trigger Store', () => {
         continuation: 'Notified user about delay on Northern line',
       });
 
+      expect(updated).toBeDefined();
       expect(updated?.continuation).toBe('Notified user about delay on Northern line');
       expect(updated?.continuationUpdatedAt).not.toBeNull();
       // Verify it's a valid ISO8601 timestamp
-      expect(new Date(updated!.continuationUpdatedAt!).toISOString()).toBe(updated?.continuationUpdatedAt);
+      const timestamp = updated?.continuationUpdatedAt ?? '';
+      expect(new Date(timestamp).toISOString()).toBe(timestamp);
     });
 
     it('clears continuation and timestamp when set to null', async () => {

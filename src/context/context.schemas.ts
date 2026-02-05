@@ -25,6 +25,18 @@ const locationContextSchema = z.object({
   atHome: z.boolean(),
   atWork: z.boolean(),
   traveling: z.boolean(),
+  // Home Assistant GPS coordinates (when available)
+  coordinates: z
+    .object({
+      latitude: z.number(),
+      longitude: z.number(),
+      accuracy: z.number(),
+    })
+    .optional(),
+  // When location actually changed (important for staleness detection)
+  lastLocationChange: z.string().optional(),
+  // Source device tracker (e.g., "device_tracker.pixel_9")
+  locationSource: z.string().optional(),
 });
 
 type LocationContext = z.infer<typeof locationContextSchema>;

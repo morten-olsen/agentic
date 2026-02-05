@@ -101,6 +101,9 @@ class OrchestratorService {
     registerExternalServices(this.#externalServiceRegistry);
     registerExternalServiceTools(this.#toolRegistry);
 
+    // Register with Services container so ContextBuilderService can access it
+    this.#services.set(ExternalServiceRegistry, this.#externalServiceRegistry);
+
     // Initialize skill registry
     this.#skillRegistry = new SkillRegistry();
 

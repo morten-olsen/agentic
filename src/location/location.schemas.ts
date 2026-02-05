@@ -93,6 +93,63 @@ const currentLocationSchema = z.object({
 
 type CurrentLocation = z.infer<typeof currentLocationSchema>;
 
+// ============================================================================
+// Coordinate History (GPS tracking)
+// ============================================================================
+
+/**
+ * Provider identifiers for coordinate history.
+ * Provider-agnostic design - not tied to any specific service.
+ */
+const coordinateProviderSchema = z.enum(['homeassistant', 'ios', 'android', 'manual', 'other']);
+
+type CoordinateProvider = z.infer<typeof coordinateProviderSchema>;
+
+/**
+ * A single coordinate history entry.
+ * Tracks GPS coordinates over time from any location provider.
+ */
+const coordinateHistoryEntrySchema = z.object({
+  id: z.string().uuid(),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracy: z.number().nullable(), // meters
+  altitude: z.number().nullable(), // meters
+  speed: z.number().nullable(), // m/s
+  bearing: z.number().nullable(), // degrees
+
+  // Provider info
+  provider: coordinateProviderSchema,
+  source: z.string().nullable(), // e.g., 'device_tracker.pixel_9'
+
+  // Zone info (what the provider thinks)
+  zone: z.string().nullable(), // e.g., 'home', 'work', 'not_home'
+
+  // Timestamps
+  recordedAt: z.string().datetime(), // when recorded by provider
+  createdAt: z.string().datetime(), // when stored
+});
+
+type CoordinateHistoryEntry = z.infer<typeof coordinateHistoryEntrySchema>;
+
+/**
+ * Input for recording a new coordinate.
+ */
+const recordCoordinateInputSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracy: z.number().optional(),
+  altitude: z.number().optional(),
+  speed: z.number().optional(),
+  bearing: z.number().optional(),
+  provider: coordinateProviderSchema,
+  source: z.string().optional(),
+  zone: z.string().optional(),
+  recordedAt: z.string().datetime().optional(), // defaults to now
+});
+
+type RecordCoordinateInput = z.input<typeof recordCoordinateInputSchema>;
+
 export type {
   LocationType,
   Coordinates,
@@ -103,6 +160,9 @@ export type {
   LocationConfidence,
   LocationSource,
   CurrentLocation,
+  CoordinateProvider,
+  CoordinateHistoryEntry,
+  RecordCoordinateInput,
 };
 
 export {
@@ -115,4 +175,7 @@ export {
   locationConfidenceSchema,
   locationSourceSchema,
   currentLocationSchema,
+  coordinateProviderSchema,
+  coordinateHistoryEntrySchema,
+  recordCoordinateInputSchema,
 };
