@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { embeddingConfigSchema } from '../embeddings/embeddings.schemas.ts';
+
 /**
  * LLM configuration for the orchestrator.
  */
@@ -18,6 +20,7 @@ type LLMConfig = z.input<typeof llmConfigSchema>;
  */
 const orchestratorConfigSchema = z.object({
   llm: llmConfigSchema,
+  embeddings: embeddingConfigSchema.optional(),
 });
 
 /** Input type for configure() - allows optional fields */

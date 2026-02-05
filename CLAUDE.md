@@ -86,19 +86,12 @@ glados/
 
 ```
 src/memory/
-├── memory.ts              # Core memory service
+├── memory.ts              # Core memory service (facade over KnexStore)
 ├── memory.schemas.ts      # Memory entry types and schemas
-├── memory.store.ts        # SQLite storage
 ├── memory.embeddings.ts   # Embedding service
-├── memory.consolidation.ts # Consolidation tiers
-├── entity-knowledge/      # Knowledge about things in user's world
-│   ├── entity-knowledge.ts
-│   ├── entity-knowledge.schemas.ts
-│   └── entity-knowledge.store.ts
-└── operator-manuals/      # Procedural knowledge for recurring tasks
-    ├── operator-manuals.ts
-    ├── operator-manuals.schemas.ts
-    └── operator-manuals.store.ts
+└── entity-knowledge/      # Knowledge about things in user's world
+    ├── entity-knowledge.ts
+    └── entity-knowledge.schemas.ts
 ```
 
 ### Orchestrator Modules
@@ -401,7 +394,7 @@ All initial phases are complete:
 1. **Foundation Layer** - User Model, Contacts, Calendar, Location, Context Builder ✅
 2. **Core Orchestration** - Tools, Orchestrator, Personality, CLI ✅
 3. **Human in the Loop** - Interrupts, Risk Gate, Approvals ✅
-4. **Memory** - Storage, Embeddings, Recall, Entity Knowledge, Operator Manuals ✅
+4. **Memory** - Storage, Embeddings, Recall, Entity Knowledge ✅
 5. **Long-Running Tasks** - User Tasks, Delegated Tasks, Multi-step workflows ✅
 6. **Proactive & Notifications** - Scheduler, Channels, Attention Budget ✅
 7. **Tool Discovery** - Tool Sets, Discovery Agent ✅
@@ -468,10 +461,9 @@ The "who, where, when" foundation:
 
 ### Memory
 
-- **Storage**: sqlite-vss (vector search in SQLite)
-- **Types**: conversation, fact, preference, procedure, feedback, event, entity, operator_manual
+- **Storage**: KnexStore (LangGraph BaseStore implementation with SQLite)
+- **Types**: conversation, fact, preference, procedure, feedback, event, entity
 - **Entity Knowledge**: Knowledge about things in user's world (companies, products, documents)
-- **Operator Manuals**: Procedural knowledge that evolves through user corrections
 - **Consolidation**: 4-tier approach
   - Tier 1: Conversation summarization (per conversation)
   - Tier 2: Fact deduplication (daily)

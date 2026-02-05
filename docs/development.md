@@ -59,7 +59,7 @@ The foundation layer contains core data that shapes every interaction. These are
 | **Contacts** | People and relationships | `src/contacts/` |
 | **Calendar** | Events and scheduling | `src/calendar/` |
 | **Location** | Places and location tracking | `src/location/` |
-| **Memory** | Long-term recall, embeddings, entity knowledge, operator manuals | `src/memory/` |
+| **Memory** | Long-term recall, embeddings, entity knowledge | `src/memory/` |
 | **Tasks** | User tasks and delegated workflows | `src/tasks/` |
 | **Context Builder** | Aggregates all context for agent | `src/context/` |
 

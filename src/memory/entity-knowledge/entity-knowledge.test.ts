@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach, expect } from 'vitest';
 
 import { Services } from '../../services/services.ts';
 import { DatabaseService, createDatabaseService } from '../../database/database.ts';
+import { KnexStore } from '../../store/store.ts';
 
 import { EntityKnowledgeService, EntityNotFoundError } from './entity-knowledge.ts';
 
@@ -14,6 +15,8 @@ const createTestServices = async (): Promise<Services> => {
   const db = createDatabaseService(services, { path: ':memory:' });
   services.set(DatabaseService, db);
   await db.migrate();
+  const store = new KnexStore(services);
+  services.set(KnexStore, store);
   return services;
 };
 
@@ -173,102 +176,6 @@ describe('EntityKnowledgeService', () => {
     });
   });
 
-  describe('relations', () => {
-    it('creates a relation between entities', async () => {
-      const entity1 = await entityService.create({ name: 'Company', type: 'company' });
-      const entity2 = await entityService.create({ name: 'Product', type: 'product' });
-
-      const relation = await entityService.addRelation({
-        sourceEntityId: entity1.id,
-        targetEntityId: entity2.id,
-        targetType: 'entity',
-        relationshipType: 'makes',
-      });
-
-      expect(relation.id).toBeDefined();
-      expect(relation.sourceEntityId).toBe(entity1.id);
-      expect(relation.targetEntityId).toBe(entity2.id);
-      expect(relation.relationshipType).toBe('makes');
-    });
-
-    it('throws EntityNotFoundError when source entity does not exist', async () => {
-      const entity = await entityService.create({ name: 'Target', type: 'concept' });
-
-      await expect(
-        entityService.addRelation({
-          sourceEntityId: 'non-existent',
-          targetEntityId: entity.id,
-          targetType: 'entity',
-          relationshipType: 'related_to',
-        }),
-      ).rejects.toThrow(EntityNotFoundError);
-    });
-
-    it('gets relations from an entity', async () => {
-      const company = await entityService.create({ name: 'Company', type: 'company' });
-      const product1 = await entityService.create({ name: 'Product 1', type: 'product' });
-      const product2 = await entityService.create({ name: 'Product 2', type: 'product' });
-
-      await entityService.addRelation({
-        sourceEntityId: company.id,
-        targetEntityId: product1.id,
-        targetType: 'entity',
-        relationshipType: 'makes',
-      });
-      await entityService.addRelation({
-        sourceEntityId: company.id,
-        targetEntityId: product2.id,
-        targetType: 'entity',
-        relationshipType: 'makes',
-      });
-
-      const relations = await entityService.getRelationsFrom(company.id);
-      expect(relations).toHaveLength(2);
-    });
-
-    it('gets related entities', async () => {
-      const company = await entityService.create({ name: 'Company', type: 'company' });
-      const product1 = await entityService.create({ name: 'Product 1', type: 'product' });
-      const product2 = await entityService.create({ name: 'Product 2', type: 'product' });
-
-      await entityService.addRelation({
-        sourceEntityId: company.id,
-        targetEntityId: product1.id,
-        targetType: 'entity',
-        relationshipType: 'makes',
-      });
-      await entityService.addRelation({
-        sourceEntityId: company.id,
-        targetEntityId: product2.id,
-        targetType: 'entity',
-        relationshipType: 'makes',
-      });
-
-      const related = await entityService.getRelatedEntities(company.id);
-      expect(related).toHaveLength(2);
-      expect(related.map((e) => e.name)).toContain('Product 1');
-      expect(related.map((e) => e.name)).toContain('Product 2');
-    });
-
-    it('removes a relation', async () => {
-      const entity1 = await entityService.create({ name: 'Entity 1', type: 'concept' });
-      const entity2 = await entityService.create({ name: 'Entity 2', type: 'concept' });
-
-      const relation = await entityService.addRelation({
-        sourceEntityId: entity1.id,
-        targetEntityId: entity2.id,
-        targetType: 'entity',
-        relationshipType: 'related_to',
-      });
-
-      const removed = await entityService.removeRelation(relation.id);
-      expect(removed).toBe(true);
-
-      const retrieved = await entityService.getRelation(relation.id);
-      expect(retrieved).toBeNull();
-    });
-  });
-
   describe('getRecent', () => {
     it('returns recently referenced entities', async () => {
       // Create two entities - entity1 exists but is not referenced
@@ -280,7 +187,36 @@ describe('EntityKnowledgeService', () => {
       await entityService.recordReference(entity2.id);
 
       const recent = await entityService.getRecent(10);
-      expect(recent[0].id).toBe(entity2.id);
+      expect(recent[0]?.id).toBe(entity2.id);
+    });
+  });
+
+  describe('list', () => {
+    it('lists all entities', async () => {
+      await entityService.create({ name: 'Entity A', type: 'company' });
+      await entityService.create({ name: 'Entity B', type: 'document' });
+      await entityService.create({ name: 'Entity C', type: 'concept' });
+
+      const entities = await entityService.list();
+      expect(entities).toHaveLength(3);
+    });
+
+    it('filters by type', async () => {
+      await entityService.create({ name: 'Company A', type: 'company' });
+      await entityService.create({ name: 'Company B', type: 'company' });
+      await entityService.create({ name: 'Document A', type: 'document' });
+
+      const companies = await entityService.list({ type: 'company' });
+      expect(companies).toHaveLength(2);
+    });
+
+    it('respects limit', async () => {
+      await entityService.create({ name: 'Entity A', type: 'company' });
+      await entityService.create({ name: 'Entity B', type: 'company' });
+      await entityService.create({ name: 'Entity C', type: 'company' });
+
+      const entities = await entityService.list({ limit: 2 });
+      expect(entities).toHaveLength(2);
     });
   });
 });

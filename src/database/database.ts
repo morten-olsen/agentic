@@ -1,5 +1,7 @@
 import knex from 'knex';
 import type { Knex } from 'knex';
+import type Database from 'better-sqlite3';
+import * as sqliteVec from 'sqlite-vec';
 
 import type { Services } from '../services/services.ts';
 import { destroySymbol } from '../services/services.ts';
@@ -21,6 +23,9 @@ import * as migration013 from './migrations/013_triggers.ts';
 import * as migration014 from './migrations/014_trigger_continuation.ts';
 import * as migration015 from './migrations/015_skills.ts';
 import * as migration016 from './migrations/016_artifacts.ts';
+import * as migration017 from './migrations/017_coordinate_history.ts';
+import * as migration018 from './migrations/018_store_items.ts';
+import * as migration019 from './migrations/019_drop_operator_manuals.ts';
 
 type MigrationSource = {
   getMigrations: () => Promise<string[]>;
@@ -45,6 +50,9 @@ const createMigrationSource = (): MigrationSource => {
     '014_trigger_continuation': migration014,
     '015_skills': migration015,
     '016_artifacts': migration016,
+    '017_coordinate_history': migration017,
+    '018_store_items': migration018,
+    '019_drop_operator_manuals': migration019,
   };
 
   return {
@@ -70,6 +78,7 @@ class DatabaseService {
 
   /**
    * Gets the Knex instance, creating it if necessary.
+   * Loads sqlite-vec extension on connection creation.
    */
   get knex(): Knex {
     if (!this.#knex) {
@@ -79,6 +88,17 @@ class DatabaseService {
           filename: this.#config.path,
         },
         useNullAsDefault: true,
+        pool: {
+          afterCreate: (conn: Database.Database, done: (err: Error | null, conn: Database.Database) => void) => {
+            // Load sqlite-vec extension on every new connection
+            try {
+              sqliteVec.load(conn);
+              done(null, conn);
+            } catch (err) {
+              done(err instanceof Error ? err : new Error(String(err)), conn);
+            }
+          },
+        },
       });
     }
     return this.#knex;

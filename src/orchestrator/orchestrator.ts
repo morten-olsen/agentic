@@ -9,6 +9,7 @@ import { ContextBuilderService } from '../context/context.ts';
 import { ToolRegistry } from '../tools/tools.ts';
 import { toLangChainToolsFiltered } from '../tools/adapters/adapters.langchain.ts';
 import { registerBuiltinTools } from '../tools/builtin/builtin.ts';
+import { KnexStore } from '../store/store.ts';
 import { MemoryService } from '../memory/memory.ts';
 import type { TriggerContext } from '../triggers/triggers.schemas.ts';
 import { SkillRegistry } from '../skills/skills.ts';
@@ -79,7 +80,7 @@ class OrchestratorService {
   /**
    * Configures the orchestrator with LLM settings.
    */
-  configure = (config: OrchestratorConfigInput): void => {
+  configure = async (config: OrchestratorConfigInput): Promise<void> => {
     this.#config = orchestratorConfigSchema.parse(config);
 
     this.#llm = new ChatOpenAI({
@@ -107,12 +108,20 @@ class OrchestratorService {
     // Initialize skill registry
     this.#skillRegistry = new SkillRegistry();
 
-    // Initialize memory service and configure with LLM credentials
+    // Initialize store (required by MemoryService)
+    // KnexStore is lazily instantiated when MemoryService accesses it
+    this.#services.get(KnexStore);
+
+    // Initialize memory service and configure embeddings
     this.#memoryService = this.#services.get(MemoryService);
-    this.#memoryService.configure({
-      baseUrl: this.#config.llm.baseUrl,
-      apiKey: this.#config.llm.apiKey,
-    });
+
+    // Use provided embedding config or default to local embeddings
+    const embeddingConfig = this.#config.embeddings ?? {
+      provider: 'local' as const,
+      model: 'Xenova/all-MiniLM-L6-v2',
+      dimensions: 384,
+    };
+    await this.#memoryService.configure(embeddingConfig);
   };
 
   /**

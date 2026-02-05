@@ -8,7 +8,7 @@ This document describes the conceptual architecture of GLaDOS - not the code, bu
 
 1. [Core Philosophy](#core-philosophy)
 2. [The World Model](#the-world-model) - Entities, Tasks, Knowledge
-3. [Memory](#memory-how-the-agent-learns) - Facts, Patterns, Operator Manuals
+3. [Memory](#memory-how-the-agent-learns) - Facts, Patterns, Procedures
 4. [Scaling Tools](#scaling-tools-without-bloating-context) - Discovery, Tool Sets
 5. [Delegation](#delegation-how-complex-work-gets-done) - Sub-agents, Parallel Execution
 6. [Task Complexity](#task-complexity-plan-before-you-leap) - Planning, Adaptive Execution
@@ -124,7 +124,7 @@ All these entities - you, people, events, places, projects, tasks, and learned k
 - "Is Sarah free tomorrow?" (knows who Sarah is, can check her calendar)
 - "When I get home, remind me to..." (knows where home is, creates location-triggered task)
 - "Before my flight, I need to..." (knows your upcoming travel from calendar)
-- "Handle this like the last invoice" (recalls procedure from operator manual)
+- "Handle this like the last invoice" (recalls past interactions and procedures)
 
 This isn't magic - it's the result of maintaining structured knowledge about the entities in your life and connecting them intelligently.
 
@@ -158,50 +158,25 @@ Over time, patterns emerge:
 
 The agent doesn't just remember what you said - it learns how you think.
 
-### Operator Manuals: How Things Get Done
+### Procedural Knowledge
 
-The agent maintains **operator manuals** - its own documentation about how to perform tasks. These build consistency and improve over time.
+Beyond facts, the agent also learns **how to do things**. Through repeated interactions and user feedback, it accumulates procedural knowledge:
 
-| Manual | What It Contains |
-|--------|------------------|
-| **Expense Reports** | Steps to submit, which tool to use, approval chain, common mistakes to avoid |
-| **Client Onboarding** | Checklist, templates to use, people to introduce, typical timeline |
-| **Weekly Report Format** | Structure, tone, what to include/exclude, who receives it |
-| **Meeting Notes** | How user prefers them formatted, what to capture, where to store |
-| **Travel Booking** | Preferred airlines, seat preferences, hotel chains, budget guidelines |
+- How you prefer expense reports submitted
+- The approval chain for different types of requests
+- Your formatting preferences for meeting notes
+- Common patterns in your workflows
 
-Operator manuals are different from one-time facts. They're **procedural knowledge** - the agent's understanding of *how* to do things, not just *what* things are.
+This procedural knowledge is stored as memories with the `procedure` type, alongside `feedback` memories that capture corrections. Together, these help the agent improve its behavior over time.
 
-**How manuals evolve:**
+**How procedural knowledge evolves:**
 
-1. **Initial creation**: Agent performs a task, documents the approach
+1. **Initial interaction**: Agent performs a task, notes the approach
 2. **Refinement**: User corrects or adjusts ("actually, always CC finance on expenses")
-3. **Observation**: Agent notices patterns ("you always book aisle seats")
-4. **Consolidation**: Similar procedures merge into comprehensive manuals
+3. **Observation**: Agent notices patterns from conversation history
+4. **Recall**: Similar procedures are retrieved through semantic search
 
-```
-[First time submitting expense report]
-Agent: "I'll submit this to the expense system. What's the approval process?"
-User: "Send to my manager Jamie, CC finance@company.com"
-
-[Agent creates manual entry]
-
-[Second time]
-Agent: "Submitting expense report - I'll send to Jamie and CC finance
-       like last time. The receipt format looks different though -
-       should I convert to PDF first?"
-User: "Yes, always PDF for receipts"
-
-[Agent updates manual]
-
-[Third time]
-Agent: "Expense report ready. PDF receipts attached, routed to Jamie
-       with finance CC'd. Anything else needed?"
-
-[Agent has learned the procedure]
-```
-
-The goal: **the agent gets better at tasks through repetition**, just like a human assistant would. After handling something a few times, it knows the drill.
+The goal: **the agent gets better at tasks through repetition**, just like a human assistant would.
 
 ### Memory Maintenance
 
@@ -229,10 +204,10 @@ The agent maintains several distinct types of knowledge:
 ├─────────────────────────────────────────────────────────────────────┤
 │                          HOW (Procedural)                           │
 ├─────────────────────────────────────────────────────────────────────┤
-│  Operator Manuals         │  Learned Workflows                      │
+│  Procedures & Feedback    │  Learned Workflows                      │
 │  - Step-by-step processes │  - Patterns from repetition             │
-│  - Best practices         │  - Tool combinations that work          │
-│  - User corrections       │  - Timing and sequencing                │
+│  - User corrections       │  - Tool combinations that work          │
+│  - Best practices         │  - Timing and sequencing                │
 ├─────────────────────────────────────────────────────────────────────┤
 │                         WHEN (Temporal)                             │
 ├─────────────────────────────────────────────────────────────────────┤
@@ -246,7 +221,7 @@ The agent maintains several distinct types of knowledge:
 All of these work together. When you say "handle the Acme invoice like last time":
 - **Entity knowledge**: Knows what Acme is
 - **Conversation history**: Remembers "last time"
-- **Operator manual**: Knows the invoice procedure
+- **Procedural memory**: Recalls relevant procedures and past feedback
 - **Facts about you**: Knows your approval authority
 
 ---
@@ -1254,12 +1229,12 @@ Each phase builds on the previous ones. You can stop at any phase and have a use
 | Aspect | Traditional Bot | GLaDOS |
 |--------|-----------------|--------|
 | Identity | Stateless, generic | Knows you, your world, your history |
-| Knowledge | None or static | Entity knowledge, operator manuals, learned facts |
+| Knowledge | None or static | Entity knowledge, procedures, learned facts |
 | Task handling | Commands or nothing | Deadlines, recurring, deferred, conditional |
 | Configuration | Settings and forms | Learn through conversation |
 | Capabilities | Fixed set of tools | Discoverable, extensible, learnable |
 | Behavior | Reactive only | Proactive + reactive |
-| Consistency | Varies by interaction | Operator manuals ensure repeatability |
+| Consistency | Varies by interaction | Learned procedures ensure repeatability |
 | Trust | All or nothing | Graduated, earned, transparent |
 | Evolution | Code releases | Continuous learning + self-improvement |
 

@@ -1,30 +1,9 @@
 import type { Services } from '../../services/services.ts';
-import { DatabaseService } from '../../database/database.ts';
+import { KnexStore } from '../../store/store.ts';
+import type { Item } from '../../store/store.ts';
 
-import type {
-  EntityKnowledge,
-  EntityRelation,
-  CreateEntityInput,
-  UpdateEntityInput,
-  CreateRelationInput,
-  EntityType,
-} from './entity-knowledge.schemas.ts';
-import {
-  createEntity,
-  getEntity,
-  updateEntity,
-  deleteEntity,
-  findByName,
-  findByType,
-  getRecentEntities,
-  listEntities,
-  recordReference,
-  createRelation,
-  getRelation,
-  deleteRelation,
-  getRelationsForEntity,
-  getRelatedEntities,
-} from './entity-knowledge.store.ts';
+import type { EntityKnowledge, CreateEntityInput, UpdateEntityInput, EntityType } from './entity-knowledge.schemas.ts';
+import { createEntityInputSchema } from './entity-knowledge.schemas.ts';
 
 // ============================================================================
 // Errors
@@ -37,12 +16,71 @@ class EntityNotFoundError extends Error {
   }
 }
 
-class RelationNotFoundError extends Error {
-  constructor(id: string) {
-    super(`Relation not found: ${id}`);
-    this.name = 'RelationNotFoundError';
-  }
-}
+// ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * Namespace prefix for all entities.
+ */
+const ENTITIES_NAMESPACE = 'entities';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Generates a unique ID for an entity.
+ */
+const generateId = (): string => crypto.randomUUID();
+
+/**
+ * Gets the current timestamp as ISO string.
+ */
+const now = (): string => new Date().toISOString();
+
+/**
+ * Converts a store Item to an EntityKnowledge.
+ */
+const itemToEntity = (item: Item, type: EntityType): EntityKnowledge => {
+  const value = item.value;
+  return {
+    id: item.key,
+    name: value['name'] as string,
+    type,
+    description: value['description'] as string | undefined,
+    attributes: (value['attributes'] as Record<string, unknown>) ?? {},
+    source: value['source'] as 'explicit' | 'inferred',
+    confidence: value['confidence'] as number,
+    lastReferencedAt: value['lastReferencedAt'] as string,
+    referenceCount: value['referenceCount'] as number,
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+  };
+};
+
+/**
+ * Converts entity data to a store value.
+ */
+const entityToValue = (entity: {
+  name: string;
+  description?: string;
+  attributes: Record<string, unknown>;
+  source: 'explicit' | 'inferred';
+  confidence: number;
+  lastReferencedAt: string;
+  referenceCount: number;
+}): Record<string, unknown> => {
+  return {
+    name: entity.name,
+    description: entity.description,
+    attributes: entity.attributes,
+    source: entity.source,
+    confidence: entity.confidence,
+    lastReferencedAt: entity.lastReferencedAt,
+    referenceCount: entity.referenceCount,
+  };
+};
 
 // ============================================================================
 // Entity Knowledge Service
@@ -51,24 +89,20 @@ class RelationNotFoundError extends Error {
 /**
  * Entity Knowledge Service - manages knowledge about things in the user's world.
  *
+ * This is a facade over KnexStore that provides a domain-specific API for entities.
+ *
  * Features:
  * - Store and retrieve entity knowledge (companies, products, documents, etc.)
- * - Track relationships between entities
  * - Reference counting for relevance tracking
+ *
+ * Note: Entity relations have been removed in favor of simpler flat storage.
  */
 class EntityKnowledgeService {
-  #services: Services;
+  #store: KnexStore;
 
   constructor(services: Services) {
-    this.#services = services;
+    this.#store = services.get(KnexStore);
   }
-
-  /**
-   * Gets the Knex instance from the database service.
-   */
-  #db = () => {
-    return this.#services.get(DatabaseService).knex;
-  };
 
   // ==========================================================================
   // Entity CRUD
@@ -78,32 +112,104 @@ class EntityKnowledgeService {
    * Creates a new entity.
    */
   create = async (input: CreateEntityInput): Promise<EntityKnowledge> => {
-    return createEntity(this.#db(), input);
+    const validated = createEntityInputSchema.parse(input);
+    const id = generateId();
+    const timestamp = now();
+
+    const value = entityToValue({
+      name: validated.name,
+      description: validated.description,
+      attributes: validated.attributes ?? {},
+      source: validated.source ?? 'explicit',
+      confidence: validated.confidence ?? 1.0,
+      lastReferencedAt: timestamp,
+      referenceCount: 0,
+    });
+
+    await this.#store.put([ENTITIES_NAMESPACE, validated.type], id, value);
+
+    return {
+      id,
+      name: validated.name,
+      type: validated.type,
+      description: validated.description,
+      attributes: validated.attributes ?? {},
+      source: validated.source ?? 'explicit',
+      confidence: validated.confidence ?? 1.0,
+      lastReferencedAt: timestamp,
+      referenceCount: 0,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
   };
 
   /**
    * Gets an entity by ID.
    */
   get = async (id: string): Promise<EntityKnowledge | null> => {
-    return getEntity(this.#db(), id);
+    // Search across all entity types to find by ID
+    const types: EntityType[] = ['company', 'project', 'document', 'product', 'concept', 'place', 'other'];
+
+    for (const type of types) {
+      const item = await this.#store.get([ENTITIES_NAMESPACE, type], id);
+      if (item) {
+        return itemToEntity(item, type);
+      }
+    }
+
+    return null;
   };
 
   /**
    * Updates an entity.
    */
   update = async (id: string, updates: UpdateEntityInput): Promise<EntityKnowledge> => {
-    const entity = await updateEntity(this.#db(), id, updates);
-    if (!entity) {
+    const existing = await this.get(id);
+    if (!existing) {
       throw new EntityNotFoundError(id);
     }
-    return entity;
+
+    const timestamp = now();
+    const value = entityToValue({
+      name: updates.name ?? existing.name,
+      description: updates.description ?? existing.description,
+      attributes: updates.attributes ?? existing.attributes,
+      source: existing.source,
+      confidence: updates.confidence ?? existing.confidence,
+      lastReferencedAt: existing.lastReferencedAt,
+      referenceCount: existing.referenceCount,
+    });
+
+    // If type changed, delete from old namespace and create in new
+    const newType = updates.type ?? existing.type;
+    if (newType !== existing.type) {
+      await this.#store.delete([ENTITIES_NAMESPACE, existing.type], id);
+    }
+
+    await this.#store.put([ENTITIES_NAMESPACE, newType], id, value);
+
+    return {
+      ...existing,
+      name: updates.name ?? existing.name,
+      type: newType,
+      description: updates.description ?? existing.description,
+      attributes: updates.attributes ?? existing.attributes,
+      confidence: updates.confidence ?? existing.confidence,
+      updatedAt: timestamp,
+    };
   };
 
   /**
-   * Deletes an entity and its relations.
+   * Deletes an entity.
    */
   delete = async (id: string): Promise<boolean> => {
-    return deleteEntity(this.#db(), id);
+    const existing = await this.get(id);
+    if (!existing) {
+      return false;
+    }
+
+    await this.#store.delete([ENTITIES_NAMESPACE, existing.type], id);
+    return true;
   };
 
   // ==========================================================================
@@ -114,28 +220,91 @@ class EntityKnowledgeService {
    * Finds entities by name (partial match).
    */
   findByName = async (name: string): Promise<EntityKnowledge[]> => {
-    return findByName(this.#db(), name);
+    const types: EntityType[] = ['company', 'project', 'document', 'product', 'concept', 'place', 'other'];
+    const matches: EntityKnowledge[] = [];
+    const searchTerm = name.toLowerCase();
+
+    for (const type of types) {
+      const items = await this.#store.search([ENTITIES_NAMESPACE, type], {
+        limit: 100,
+      });
+
+      for (const item of items) {
+        const entityName = (item.value['name'] as string) ?? '';
+        if (entityName.toLowerCase().includes(searchTerm)) {
+          matches.push(itemToEntity(item, type));
+        }
+      }
+    }
+
+    // Sort by reference count descending
+    matches.sort((a, b) => b.referenceCount - a.referenceCount);
+    return matches.slice(0, 20);
   };
 
   /**
    * Finds entities by type.
    */
   findByType = async (type: EntityType): Promise<EntityKnowledge[]> => {
-    return findByType(this.#db(), type);
+    const items = await this.#store.search([ENTITIES_NAMESPACE, type], {
+      limit: 100,
+    });
+
+    const entities = items.map((item) => itemToEntity(item, type));
+
+    // Sort by lastReferencedAt descending
+    entities.sort((a, b) => new Date(b.lastReferencedAt).getTime() - new Date(a.lastReferencedAt).getTime());
+
+    return entities;
   };
 
   /**
    * Gets recently referenced entities.
    */
-  getRecent = async (limit?: number): Promise<EntityKnowledge[]> => {
-    return getRecentEntities(this.#db(), limit);
+  getRecent = async (limit = 10): Promise<EntityKnowledge[]> => {
+    const types: EntityType[] = ['company', 'project', 'document', 'product', 'concept', 'place', 'other'];
+    const allEntities: EntityKnowledge[] = [];
+
+    for (const type of types) {
+      const items = await this.#store.search([ENTITIES_NAMESPACE, type], {
+        limit: 50,
+      });
+
+      for (const item of items) {
+        allEntities.push(itemToEntity(item, type));
+      }
+    }
+
+    // Sort by lastReferencedAt descending
+    allEntities.sort((a, b) => new Date(b.lastReferencedAt).getTime() - new Date(a.lastReferencedAt).getTime());
+
+    return allEntities.slice(0, limit);
   };
 
   /**
    * Lists entities with optional filtering.
    */
   list = async (options?: { type?: EntityType; limit?: number }): Promise<EntityKnowledge[]> => {
-    return listEntities(this.#db(), options);
+    const types: EntityType[] = options?.type
+      ? [options.type]
+      : ['company', 'project', 'document', 'product', 'concept', 'place', 'other'];
+    const limit = options?.limit ?? 100;
+    const allEntities: EntityKnowledge[] = [];
+
+    for (const type of types) {
+      const items = await this.#store.search([ENTITIES_NAMESPACE, type], {
+        limit: 100,
+      });
+
+      for (const item of items) {
+        allEntities.push(itemToEntity(item, type));
+      }
+    }
+
+    // Sort by lastReferencedAt descending
+    allEntities.sort((a, b) => new Date(b.lastReferencedAt).getTime() - new Date(a.lastReferencedAt).getTime());
+
+    return allEntities.slice(0, limit);
   };
 
   // ==========================================================================
@@ -146,51 +315,21 @@ class EntityKnowledgeService {
    * Records a reference to an entity (updates lastReferencedAt and count).
    */
   recordReference = async (id: string): Promise<void> => {
-    return recordReference(this.#db(), id);
-  };
+    const existing = await this.get(id);
+    if (!existing) return;
 
-  // ==========================================================================
-  // Relations
-  // ==========================================================================
+    const timestamp = now();
+    const value = entityToValue({
+      name: existing.name,
+      description: existing.description,
+      attributes: existing.attributes,
+      source: existing.source,
+      confidence: existing.confidence,
+      lastReferencedAt: timestamp,
+      referenceCount: existing.referenceCount + 1,
+    });
 
-  /**
-   * Adds a relation from an entity to another object.
-   */
-  addRelation = async (input: CreateRelationInput): Promise<EntityRelation> => {
-    // Verify source entity exists
-    const entity = await getEntity(this.#db(), input.sourceEntityId);
-    if (!entity) {
-      throw new EntityNotFoundError(input.sourceEntityId);
-    }
-    return createRelation(this.#db(), input);
-  };
-
-  /**
-   * Gets a relation by ID.
-   */
-  getRelation = async (id: string): Promise<EntityRelation | null> => {
-    return getRelation(this.#db(), id);
-  };
-
-  /**
-   * Removes a relation.
-   */
-  removeRelation = async (id: string): Promise<boolean> => {
-    return deleteRelation(this.#db(), id);
-  };
-
-  /**
-   * Gets all relations from an entity.
-   */
-  getRelationsFrom = async (entityId: string): Promise<EntityRelation[]> => {
-    return getRelationsForEntity(this.#db(), entityId);
-  };
-
-  /**
-   * Gets all related entities (entities linked via relations).
-   */
-  getRelatedEntities = async (entityId: string): Promise<EntityKnowledge[]> => {
-    return getRelatedEntities(this.#db(), entityId);
+    await this.#store.put([ENTITIES_NAMESPACE, existing.type], id, value);
   };
 }
 
@@ -198,22 +337,13 @@ class EntityKnowledgeService {
 // Re-exports
 // ============================================================================
 
-export type {
-  EntityType,
-  EntityRelation,
-  EntityKnowledge,
-  CreateEntityInput,
-  UpdateEntityInput,
-  CreateRelationInput,
-} from './entity-knowledge.schemas.ts';
+export type { EntityType, EntityKnowledge, CreateEntityInput, UpdateEntityInput } from './entity-knowledge.schemas.ts';
 
 export {
   entityTypeSchema,
-  entityRelationSchema,
   entityKnowledgeSchema,
   createEntityInputSchema,
   updateEntityInputSchema,
-  createRelationInputSchema,
 } from './entity-knowledge.schemas.ts';
 
-export { EntityKnowledgeService, EntityNotFoundError, RelationNotFoundError };
+export { EntityKnowledgeService, EntityNotFoundError };

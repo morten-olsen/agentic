@@ -1,20 +1,13 @@
+import type { Embeddings } from '@langchain/core/embeddings';
+
 import type { Services } from '../services/services.ts';
-import { DatabaseService } from '../database/database.ts';
+import { KnexStore, cosineSimilarity } from '../store/store.ts';
+import type { Item, IndexConfig } from '../store/store.ts';
+import { createEmbeddingService } from '../embeddings/embeddings.ts';
+import type { EmbeddingConfig } from '../embeddings/embeddings.ts';
 
 import type { MemoryEntry, MemoryType, CreateMemoryInput, RecallOptions, MemoryConfig } from './memory.schemas.ts';
-import { memoryConfigSchema } from './memory.schemas.ts';
-import {
-  createMemory,
-  getMemory,
-  updateMemory,
-  deleteMemory,
-  listMemories,
-  getMemoriesWithEmbeddings,
-  updateAccess,
-  getRecentTopics as getRecentTopicsFromStore,
-  reinforceMemory,
-} from './memory.store.ts';
-import { EmbeddingService, cosineSimilarity } from './memory.embeddings.ts';
+import { memoryConfigSchema, createMemoryInputSchema } from './memory.schemas.ts';
 
 // ============================================================================
 // Errors
@@ -35,11 +28,75 @@ class EmbeddingServiceNotConfiguredError extends Error {
 }
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * Namespace prefix for all memories.
+ */
+const MEMORIES_NAMESPACE = 'memories';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Generates a unique ID for a memory.
+ */
+const generateId = (): string => crypto.randomUUID();
+
+/**
+ * Gets the current timestamp as ISO string.
+ */
+const now = (): string => new Date().toISOString();
+
+/**
+ * Converts a store Item to a MemoryEntry.
+ */
+const itemToMemory = (item: Item, type: MemoryType): MemoryEntry => {
+  const value = item.value;
+  return {
+    id: item.key,
+    type,
+    content: value['content'] as string,
+    embedding: value['embedding'] as number[] | undefined,
+    metadata: (value['metadata'] as Record<string, unknown>) ?? {},
+    importance: value['importance'] as number,
+    createdAt: item.createdAt.toISOString(),
+    lastAccessedAt: value['lastAccessedAt'] as string,
+    accessCount: value['accessCount'] as number,
+  };
+};
+
+/**
+ * Converts a MemoryEntry to a store value.
+ */
+const memoryToValue = (memory: {
+  content: string;
+  metadata?: Record<string, unknown>;
+  importance: number;
+  lastAccessedAt: string;
+  accessCount: number;
+  embedding?: number[];
+}): Record<string, unknown> => {
+  return {
+    content: memory.content,
+    metadata: memory.metadata ?? {},
+    importance: memory.importance,
+    lastAccessedAt: memory.lastAccessedAt,
+    accessCount: memory.accessCount,
+    embedding: memory.embedding,
+  };
+};
+
+// ============================================================================
 // Memory Service
 // ============================================================================
 
 /**
  * Memory Service - provides long-term memory capabilities for the agent.
+ *
+ * This is a facade over KnexStore that provides a domain-specific API for memories.
  *
  * Features:
  * - Store memories with automatic embedding generation
@@ -48,39 +105,40 @@ class EmbeddingServiceNotConfiguredError extends Error {
  * - Access tracking for reinforcement
  */
 class MemoryService {
-  #services: Services;
   #config: MemoryConfig;
-  #embeddingService: EmbeddingService | null = null;
+  #store: KnexStore;
+  #embeddings: Embeddings | null = null;
 
   constructor(services: Services, config?: Partial<MemoryConfig>) {
-    this.#services = services;
     this.#config = memoryConfigSchema.parse(config ?? {});
+    this.#store = services.get(KnexStore);
   }
 
   /**
-   * Gets the Knex instance from the database service.
+   * Configures the embedding service.
+   * @param embeddingConfig - Configuration for the embedding provider (local or openai)
    */
-  #db = () => {
-    return this.#services.get(DatabaseService).knex;
-  };
+  configure = async (embeddingConfig: EmbeddingConfig): Promise<void> => {
+    const embeddingService = createEmbeddingService(embeddingConfig);
+    this.#embeddings = embeddingService;
 
-  /**
-   * Configures the embedding service with LLM credentials.
-   */
-  configure = (llmConfig: { baseUrl: string; apiKey: string }): void => {
-    this.#embeddingService = new EmbeddingService({
-      model: this.#config.embeddingModel,
-      dimensions: this.#config.embeddingDimensions,
-      baseUrl: llmConfig.baseUrl,
-      apiKey: llmConfig.apiKey,
-    });
+    // Get dimensions from the config
+    const dims = embeddingConfig.provider === 'local' ? embeddingConfig.dimensions : embeddingConfig.dimensions;
+
+    // Configure the store's index
+    const indexConfig: IndexConfig = {
+      dims,
+      embeddings: this.#embeddings,
+      fields: ['content'],
+    };
+    await this.#store.configure(indexConfig);
   };
 
   /**
    * Checks if the embedding service is configured.
    */
   get isConfigured(): boolean {
-    return this.#embeddingService !== null;
+    return this.#embeddings !== null;
   }
 
   /**
@@ -94,14 +152,40 @@ class MemoryService {
    * Stores a new memory with automatic embedding generation.
    */
   remember = async (input: CreateMemoryInput): Promise<MemoryEntry> => {
+    const validated = createMemoryInputSchema.parse(input);
+    const id = generateId();
+    const timestamp = now();
+
     let embedding: number[] | undefined;
 
     // Generate embedding if service is configured
-    if (this.#embeddingService) {
-      embedding = await this.#embeddingService.generateEmbedding(input.content);
+    if (this.#embeddings) {
+      const embeddings = await this.#embeddings.embedDocuments([validated.content]);
+      embedding = embeddings[0];
     }
 
-    return createMemory(this.#db(), input, embedding);
+    const value = memoryToValue({
+      content: validated.content,
+      metadata: validated.metadata,
+      importance: validated.importance ?? 0.5,
+      lastAccessedAt: timestamp,
+      accessCount: 0,
+      embedding,
+    });
+
+    await this.#store.put([MEMORIES_NAMESPACE, validated.type], id, value);
+
+    return {
+      id,
+      type: validated.type,
+      content: validated.content,
+      embedding,
+      metadata: validated.metadata ?? {},
+      importance: validated.importance ?? 0.5,
+      createdAt: timestamp,
+      lastAccessedAt: timestamp,
+      accessCount: 0,
+    };
   };
 
   /**
@@ -112,8 +196,8 @@ class MemoryService {
     const minImportance = options?.minImportance ?? this.#config.minImportanceForRecall;
 
     // If embedding service is not configured, fall back to listing by recency
-    if (!this.#embeddingService) {
-      return listMemories(this.#db(), {
+    if (!this.#embeddings) {
+      return this.list({
         ...options,
         limit,
         minImportance,
@@ -121,16 +205,48 @@ class MemoryService {
     }
 
     // Generate query embedding
-    const queryEmbedding = await this.#embeddingService.generateQueryEmbedding(query);
+    const queryEmbedding = await this.#embeddings.embedQuery(query);
 
-    // Get all memories with embeddings
-    const memories = await getMemoriesWithEmbeddings(this.#db(), {
-      ...options,
-      minImportance,
-    });
+    // Get all memories with embeddings that match criteria
+    const allMemories: MemoryEntry[] = [];
 
-    // Calculate similarity scores
-    const scored = memories
+    // Get memories of requested types, or all types if not specified
+    const types = options?.types ?? [
+      'conversation',
+      'fact',
+      'preference',
+      'procedure',
+      'feedback',
+      'event',
+      'entity',
+    ];
+
+    for (const type of types) {
+      const items = await this.#store.search([MEMORIES_NAMESPACE, type], {
+        limit: 1000, // Get all, we'll filter and limit later
+      });
+
+      for (const item of items) {
+        const memory = itemToMemory(item, type as MemoryType);
+
+        // Filter by importance
+        if (memory.importance < minImportance) {
+          continue;
+        }
+
+        // Filter by time range if specified
+        if (options?.timeRange) {
+          if (memory.createdAt < options.timeRange.start || memory.createdAt > options.timeRange.end) {
+            continue;
+          }
+        }
+
+        allMemories.push(memory);
+      }
+    }
+
+    // Calculate similarity scores and filter
+    const scored = allMemories
       .filter((m): m is MemoryEntry & { embedding: number[] } => Boolean(m.embedding && m.embedding.length > 0))
       .map((memory) => ({
         memory,
@@ -142,7 +258,7 @@ class MemoryService {
     const topMemories = scored.slice(0, limit);
 
     // Update access for retrieved memories
-    await Promise.all(topMemories.map((item) => updateAccess(this.#db(), item.memory.id)));
+    await Promise.all(topMemories.map((item) => this.#updateAccess(item.memory)));
 
     return topMemories.map((item) => item.memory);
   };
@@ -151,7 +267,7 @@ class MemoryService {
    * Recalls memories by type without semantic search.
    */
   recallByType = async (type: MemoryType, limit?: number): Promise<MemoryEntry[]> => {
-    return listMemories(this.#db(), {
+    return this.list({
       types: [type],
       limit: limit ?? this.#config.recallLimit,
     });
@@ -161,18 +277,56 @@ class MemoryService {
    * Gets a specific memory by ID.
    */
   get = async (id: string): Promise<MemoryEntry | null> => {
-    return getMemory(this.#db(), id);
+    // We need to search across all memory types to find by ID
+    const types: MemoryType[] = [
+      'conversation',
+      'fact',
+      'preference',
+      'procedure',
+      'feedback',
+      'event',
+      'entity',
+    ];
+
+    for (const type of types) {
+      const item = await this.#store.get([MEMORIES_NAMESPACE, type], id);
+      if (item) {
+        return itemToMemory(item, type);
+      }
+    }
+
+    return null;
   };
 
   /**
    * Reinforces a memory by increasing its importance.
    */
-  reinforce = async (id: string): Promise<MemoryEntry> => {
-    const memory = await reinforceMemory(this.#db(), id);
+  reinforce = async (id: string, boost = 0.1): Promise<MemoryEntry> => {
+    const memory = await this.get(id);
     if (!memory) {
       throw new MemoryNotFoundError(id);
     }
-    return memory;
+
+    const newImportance = Math.min(1.0, memory.importance + boost);
+    const timestamp = now();
+
+    const value = memoryToValue({
+      content: memory.content,
+      metadata: memory.metadata,
+      importance: newImportance,
+      lastAccessedAt: timestamp,
+      accessCount: memory.accessCount + 1,
+      embedding: memory.embedding,
+    });
+
+    await this.#store.put([MEMORIES_NAMESPACE, memory.type], id, value);
+
+    return {
+      ...memory,
+      importance: newImportance,
+      lastAccessedAt: timestamp,
+      accessCount: memory.accessCount + 1,
+    };
   };
 
   /**
@@ -180,47 +334,117 @@ class MemoryService {
    * Regenerates the embedding if the service is configured.
    */
   correct = async (id: string, newContent: string): Promise<MemoryEntry> => {
-    const existing = await getMemory(this.#db(), id);
+    const existing = await this.get(id);
     if (!existing) {
       throw new MemoryNotFoundError(id);
     }
 
     let embedding: number[] | undefined;
-    if (this.#embeddingService) {
-      embedding = await this.#embeddingService.generateEmbedding(newContent);
+    if (this.#embeddings) {
+      const embeddings = await this.#embeddings.embedDocuments([newContent]);
+      embedding = embeddings[0];
     }
 
-    const updated = await updateMemory(this.#db(), id, {
+    const timestamp = now();
+    const value = memoryToValue({
       content: newContent,
+      metadata: existing.metadata,
+      importance: existing.importance,
+      lastAccessedAt: timestamp,
+      accessCount: existing.accessCount,
       embedding,
     });
 
-    if (!updated) {
-      throw new MemoryNotFoundError(id);
-    }
+    await this.#store.put([MEMORIES_NAMESPACE, existing.type], id, value);
 
-    return updated;
+    return {
+      ...existing,
+      content: newContent,
+      embedding,
+      lastAccessedAt: timestamp,
+    };
   };
 
   /**
    * Deletes a memory.
    */
   forget = async (id: string): Promise<boolean> => {
-    return deleteMemory(this.#db(), id);
+    const memory = await this.get(id);
+    if (!memory) {
+      return false;
+    }
+
+    await this.#store.delete([MEMORIES_NAMESPACE, memory.type], id);
+    return true;
   };
 
   /**
    * Gets recent topics for context building.
    */
-  getRecentTopics = async (limit?: number): Promise<string[]> => {
-    return getRecentTopicsFromStore(this.#db(), limit ?? 5);
+  getRecentTopics = async (limit = 5): Promise<string[]> => {
+    const types: MemoryType[] = ['conversation', 'fact'];
+    const topics: string[] = [];
+
+    for (const type of types) {
+      const items = await this.#store.search([MEMORIES_NAMESPACE, type], {
+        limit,
+      });
+
+      for (const item of items) {
+        topics.push(item.value['content'] as string);
+      }
+    }
+
+    // Sort by recency (items are already sorted by updated_at desc from store)
+    return topics.slice(0, limit);
   };
 
   /**
    * Lists memories with optional filtering.
    */
   list = async (options?: RecallOptions): Promise<MemoryEntry[]> => {
-    return listMemories(this.#db(), options);
+    const types = options?.types ?? [
+      'conversation',
+      'fact',
+      'preference',
+      'procedure',
+      'feedback',
+      'event',
+      'entity',
+    ];
+    const limit = options?.limit ?? this.#config.recallLimit;
+    const minImportance = options?.minImportance ?? 0;
+
+    const allMemories: MemoryEntry[] = [];
+
+    for (const type of types) {
+      const items = await this.#store.search([MEMORIES_NAMESPACE, type], {
+        limit: 1000, // Get more than needed, filter later
+      });
+
+      for (const item of items) {
+        const memory = itemToMemory(item, type as MemoryType);
+
+        // Filter by importance
+        if (memory.importance < minImportance) {
+          continue;
+        }
+
+        // Filter by time range if specified
+        if (options?.timeRange) {
+          if (memory.createdAt < options.timeRange.start || memory.createdAt > options.timeRange.end) {
+            continue;
+          }
+        }
+
+        allMemories.push(memory);
+      }
+    }
+
+    // Sort by lastAccessedAt descending
+    allMemories.sort((a, b) => new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime());
+
+    return allMemories.slice(0, limit);
   };
 
   /**
@@ -235,20 +459,62 @@ class MemoryService {
     let embeddings: number[][] | undefined;
 
     // Generate embeddings in batch if service is configured
-    if (this.#embeddingService) {
-      embeddings = await this.#embeddingService.generateEmbeddings(inputs.map((i) => i.content));
+    if (this.#embeddings) {
+      embeddings = await this.#embeddings.embedDocuments(inputs.map((i) => i.content));
     }
 
     const memories: MemoryEntry[] = [];
     for (let i = 0; i < inputs.length; i++) {
       const input = inputs[i];
       if (input) {
-        const memory = await createMemory(this.#db(), input, embeddings?.[i]);
-        memories.push(memory);
+        const validated = createMemoryInputSchema.parse(input);
+        const id = generateId();
+        const timestamp = now();
+        const embedding = embeddings?.[i];
+
+        const value = memoryToValue({
+          content: validated.content,
+          metadata: validated.metadata,
+          importance: validated.importance ?? 0.5,
+          lastAccessedAt: timestamp,
+          accessCount: 0,
+          embedding,
+        });
+
+        await this.#store.put([MEMORIES_NAMESPACE, validated.type], id, value);
+
+        memories.push({
+          id,
+          type: validated.type,
+          content: validated.content,
+          embedding,
+          metadata: validated.metadata ?? {},
+          importance: validated.importance ?? 0.5,
+          createdAt: timestamp,
+          lastAccessedAt: timestamp,
+          accessCount: 0,
+        });
       }
     }
 
     return memories;
+  };
+
+  /**
+   * Updates access timestamp and count for a memory.
+   */
+  #updateAccess = async (memory: MemoryEntry): Promise<void> => {
+    const timestamp = now();
+    const value = memoryToValue({
+      content: memory.content,
+      metadata: memory.metadata,
+      importance: memory.importance,
+      lastAccessedAt: timestamp,
+      accessCount: memory.accessCount + 1,
+      embedding: memory.embedding,
+    });
+
+    await this.#store.put([MEMORIES_NAMESPACE, memory.type], memory.id, value);
   };
 }
 
@@ -276,5 +542,5 @@ export {
 export { MemoryService, MemoryNotFoundError, EmbeddingServiceNotConfiguredError };
 
 // Export embedding utilities for testing
-export { cosineSimilarity } from './memory.embeddings.ts';
+export { cosineSimilarity } from '../store/store.ts';
 export { EmbeddingService, createEmbeddingService } from './memory.embeddings.ts';
