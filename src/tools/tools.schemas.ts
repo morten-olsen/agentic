@@ -60,6 +60,8 @@ type ToolContext = z.infer<typeof toolContextSchema> & {
   // Trigger context (present when running from a trigger invocation)
   triggerId?: string;
   triggerName?: string;
+  // Message context (for artifact association)
+  messageId?: string;
 };
 
 /**

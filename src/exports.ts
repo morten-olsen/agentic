@@ -351,3 +351,34 @@ export type {
   CheckContext,
   CheckExecutor,
 } from './proactive/proactive.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Artifacts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export { ArtifactService, DEFAULT_CONFIG as ARTIFACT_DEFAULT_CONFIG } from './artifacts/artifacts.ts';
+export type { ArtifactServiceConfig } from './artifacts/artifacts.ts';
+export {
+  artifactMimeTypeSchema,
+  artifactSchema,
+  artifactMetaSchema,
+  createArtifactInputSchema,
+  createArtifactResultSchema,
+  artifactRowSchema,
+  rowToArtifact,
+  rowToArtifactMeta,
+} from './artifacts/artifacts.schemas.ts';
+export type {
+  ArtifactMimeType,
+  Artifact,
+  ArtifactMeta,
+  CreateArtifactInput,
+  CreateArtifactResult,
+  ArtifactRow,
+} from './artifacts/artifacts.schemas.ts';
+export {
+  ArtifactNotFoundError,
+  ArtifactExpiredError,
+  ArtifactSizeLimitError,
+  ArtifactLimitExceededError,
+} from './artifacts/artifacts.errors.ts';

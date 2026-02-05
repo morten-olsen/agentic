@@ -39,7 +39,8 @@
       "Bash(kubectl exec:*)",
       "Bash(kubectl logs:*)",
       "Bash(pnpm exec eslint:*)",
-      "Bash(pnpm exec prettier:*)"
+      "Bash(pnpm exec prettier:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

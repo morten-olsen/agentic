@@ -20,6 +20,7 @@ import * as migration012 from './migrations/012_day_planner.ts';
 import * as migration013 from './migrations/013_triggers.ts';
 import * as migration014 from './migrations/014_trigger_continuation.ts';
 import * as migration015 from './migrations/015_skills.ts';
+import * as migration016 from './migrations/016_artifacts.ts';
 
 type MigrationSource = {
   getMigrations: () => Promise<string[]>;
@@ -43,6 +44,7 @@ const createMigrationSource = (): MigrationSource => {
     '013_triggers': migration013,
     '014_trigger_continuation': migration014,
     '015_skills': migration015,
+    '016_artifacts': migration016,
   };
 
   return {

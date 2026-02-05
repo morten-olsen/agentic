@@ -50,23 +50,23 @@ The Artifact System provides a mechanism for tools to store large data responses
               ┌───────────────┴───────────────┐
               ▼                               ▼
 ┌─────────────────────────────────┐   ┌─────────────────────────────────┐
-│   Agent Exploration Tools        │   │   Client Access                  │
+│   Agent Exploration Tools        │   │   Client Commands                │
 ├─────────────────────────────────┤   ├─────────────────────────────────┤
 │ get_artifact_section({           │   │ CLI:                             │
 │   artifact: "art_123",           │   │   /artifact art_123              │
-│   path: "routes[0].waypoints"    │   │   /artifact art_123 --section x  │
+│   path: "routes[0].waypoints"    │   │   /artifact art_123 --path x     │
 │ })                               │   │                                  │
 │                                  │   │ Telegram:                        │
 │ query_artifact({                 │   │   /artifact art_123              │
 │   artifact: "art_123",           │   │   (shows summary + inline btns)  │
 │   query: "filter routes by cost" │   │                                  │
-│ })                               │   │ Future: HTTP API                 │
+│ })                               │   │                                  │
 └─────────────────────────────────┘   └─────────────────────────────────┘
 ```
 
 ### Key Design Decisions
 
-1. **In-Memory with Database Backup**: Artifacts stored in memory for fast access, with optional SQLite backup for persistence across restarts (within TTL).
+1. **Database Storage**: Artifacts stored in SQLite using the existing Knex infrastructure. Simple and consistent with other data storage in the system.
 
 2. **Conversation-Scoped**: Artifacts belong to a conversation. When the conversation expires or is deleted, its artifacts are cleaned up.
 
@@ -92,6 +92,7 @@ type ArtifactMimeType =
 type Artifact = {
   id: string;                        // Prefixed with 'art_'
   conversationId: string;            // Owning conversation
+  messageId: string;                 // Message that created this artifact
   type: string;                      // Domain type (e.g., 'route_optimization')
   mimeType: ArtifactMimeType;
 
@@ -115,6 +116,8 @@ type Artifact = {
 
 ```typescript
 type CreateArtifactInput = {
+  conversationId: string;            // Owning conversation
+  messageId: string;                 // Message creating this artifact
   type: string;                      // Domain type
   data: unknown;                     // JSON data or base64 string for binary
   mimeType?: ArtifactMimeType;       // Default: 'application/json'
@@ -147,6 +150,7 @@ type ArtifactToolResponse<TSummary> = {
 CREATE TABLE artifacts (
   id TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  message_id TEXT NOT NULL,
   type TEXT NOT NULL,
   mime_type TEXT NOT NULL DEFAULT 'application/json',
 
@@ -165,6 +169,7 @@ CREATE TABLE artifacts (
 );
 
 CREATE INDEX idx_artifacts_conversation ON artifacts(conversation_id);
+CREATE INDEX idx_artifacts_message ON artifacts(message_id);
 CREATE INDEX idx_artifacts_expires ON artifacts(expires_at);
 CREATE INDEX idx_artifacts_type ON artifacts(type);
 ```
@@ -182,6 +187,7 @@ class ArtifactStore {
   // Core operations
   store(
     conversationId: string,
+    messageId: string,
     type: string,
     data: unknown,
     options?: {
@@ -196,6 +202,7 @@ class ArtifactStore {
 
   // Queries
   getByConversation(conversationId: string): Promise<Artifact[]>;
+  getByMessage(messageId: string): Promise<Artifact[]>;
   getByType(type: string, conversationId?: string): Promise<Artifact[]>;
 
   // Lifecycle
@@ -209,10 +216,10 @@ class ArtifactStore {
 
 ### Storage Strategy
 
-For v1, artifacts are stored in SQLite:
+Artifacts are stored directly in SQLite:
 
 ```typescript
-store(conversationId: string, type: string, data: unknown, options = {}): Promise<string> {
+store(conversationId: string, messageId: string, type: string, data: unknown, options = {}): Promise<string> {
   const id = `art_${generateId()}`;
   const mimeType = options.mimeType ?? 'application/json';
   const ttlMinutes = options.ttlMinutes ?? 60;
@@ -230,6 +237,7 @@ store(conversationId: string, type: string, data: unknown, options = {}): Promis
   await this.db('artifacts').insert({
     id,
     conversation_id: conversationId,
+    message_id: messageId,
     type,
     mime_type: mimeType,
     data: serialized,
@@ -293,6 +301,7 @@ const getArtifactTool: ToolDefinition = {
   outputSchema: z.object({
     artifact: z.object({
       id: z.string(),
+      messageId: z.string(),
       type: z.string(),
       mimeType: z.string(),
       sizeBytes: z.number(),
@@ -328,6 +337,7 @@ const getArtifactTool: ToolDefinition = {
     const result: Record<string, unknown> = {
       artifact: {
         id: artifact.id,
+        messageId: artifact.messageId,
         type: artifact.type,
         mimeType: artifact.mimeType,
         sizeBytes: artifact.sizeBytes,
@@ -366,11 +376,13 @@ const listArtifactsTool: ToolDefinition = {
 
   inputSchema: z.object({
     type: z.string().optional().describe('Filter by artifact type'),
+    messageId: z.string().optional().describe('Filter by message ID'),
   }),
 
   outputSchema: z.object({
     artifacts: z.array(z.object({
       id: z.string(),
+      messageId: z.string(),
       type: z.string(),
       mimeType: z.string(),
       sizeBytes: z.number(),
@@ -393,7 +405,9 @@ const listArtifactsTool: ToolDefinition = {
   execute: async (input, context) => {
     const conversationId = context.configurable.conversationId;
 
-    let artifacts = await artifactStore.getByConversation(conversationId);
+    let artifacts = input.messageId
+      ? await artifactStore.getByMessage(input.messageId)
+      : await artifactStore.getByConversation(conversationId);
 
     if (input.type) {
       artifacts = artifacts.filter(a => a.type === input.type);
@@ -402,6 +416,7 @@ const listArtifactsTool: ToolDefinition = {
     return {
       artifacts: artifacts.map(a => ({
         id: a.id,
+        messageId: a.messageId,
         type: a.type,
         mimeType: a.mimeType,
         sizeBytes: a.sizeBytes,
@@ -419,7 +434,7 @@ const listArtifactsTool: ToolDefinition = {
 
 ### Storing Artifacts in Tools
 
-Tools that produce large data should follow this pattern:
+Tools that produce large data should follow this pattern. The `messageId` is available in the tool context and identifies the assistant message containing this tool call:
 
 ```typescript
 const runAnalysisTool = tool(
@@ -427,9 +442,10 @@ const runAnalysisTool = tool(
     // Perform analysis - potentially large result
     const result = await analyzeData(input);
 
-    // Store full result as artifact
+    // Store full result as artifact (messageId from context)
     const artifactId = await artifactStore.store(
       context.configurable.conversationId,
+      context.configurable.messageId,  // Links artifact to this message
       'data_analysis',  // Domain type
       result,
       { ttlMinutes: 60 }
@@ -495,6 +511,8 @@ const getAnalysisRecordsTool = tool(
 
 ## Client Integration
 
+Clients access artifacts through the ArtifactStore service (injected via service container), not via HTTP API.
+
 ### CLI Commands
 
 ```bash
@@ -517,13 +535,18 @@ const getAnalysisRecordsTool = tool(
 ### CLI Implementation
 
 ```typescript
-// In CLI command handler
-const artifactCommand = async (args: string[], context: CliContext) => {
+// In src/cli/commands/artifact.ts
+export const artifactCommand = async (
+  args: string[],
+  services: ServiceContainer,
+  conversationId: string
+): Promise<string> => {
+  const { artifactStore } = services;
   const [artifactId, ...flags] = args;
 
   if (!artifactId) {
     // List all artifacts
-    const artifacts = await artifactStore.getByConversation(context.conversationId);
+    const artifacts = await artifactStore.getByConversation(conversationId);
     return formatArtifactList(artifacts);
   }
 
@@ -555,11 +578,19 @@ const artifactCommand = async (args: string[], context: CliContext) => {
 ### Telegram Integration
 
 ```typescript
-// In Telegram message handler
-const handleArtifactCommand = async (chatId: number, artifactId: string) => {
+// In src/clients/telegram/telegram.handlers.ts
+export const handleArtifactCommand = async (
+  bot: TelegramBot,
+  chatId: number,
+  artifactId: string,
+  services: ServiceContainer
+): Promise<void> => {
+  const { artifactStore } = services;
+
   const artifact = await artifactStore.get(artifactId);
   if (!artifact) {
-    return bot.sendMessage(chatId, 'Artifact not found or expired');
+    await bot.sendMessage(chatId, 'Artifact not found or expired');
+    return;
   }
 
   const summary = formatArtifactForTelegram(artifact);
@@ -626,7 +657,7 @@ const endConversation = async (conversationId: string) => {
 
 ```typescript
 type ArtifactConfig = {
-  // Storage
+  // Storage limits
   maxArtifactSizeBytes: number;      // Default: 10MB
   maxArtifactsPerConversation: number; // Default: 50
 
@@ -636,9 +667,6 @@ type ArtifactConfig = {
 
   // Cleanup
   cleanupIntervalMinutes: number;    // Default: 5
-
-  // Persistence
-  persistToDatabase: boolean;        // Default: true
 };
 ```
 
@@ -660,9 +688,10 @@ const runRouteOptimization = tool(
       constraints,
     });
 
-    // Store full result (~320KB)
+    // Store full result (~320KB), linked to this message
     const artifactId = await artifactStore.store(
       context.configurable.conversationId,
+      context.configurable.messageId,
       'route_optimization',
       result,
       { ttlMinutes: 120 }  // 2 hours for route data
