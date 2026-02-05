@@ -42,7 +42,18 @@
       "Bash(pnpm exec prettier:*)",
       "Bash(npx tsc:*)",
       "Bash(pnpm tsc:*)",
-      "WebFetch(domain:open-meteo.com)"
+      "WebFetch(domain:open-meteo.com)",
+      "WebFetch(domain:blog.langchain.com)",
+      "WebFetch(domain:langchain-ai.github.io)",
+      "WebSearch",
+      "WebFetch(domain:docs.langchain.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:forum.langchain.com)",
+      "WebFetch(domain:docs.mem0.ai)",
+      "WebFetch(domain:www.letta.com)",
+      "WebFetch(domain:www.getzep.com)",
+      "Bash(pnpm prettier:*)"
     ]
   }
 }

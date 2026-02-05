@@ -12,7 +12,6 @@ const memoryTypeSchema = z.enum([
   'feedback', // User corrections and guidance
   'event', // External events that occurred
   'entity', // Knowledge about things in user's world (links to EntityKnowledge)
-  'operator_manual', // Procedural knowledge for recurring tasks
 ]);
 
 type MemoryType = z.infer<typeof memoryTypeSchema>;
@@ -102,8 +101,6 @@ type MemoryRow = z.infer<typeof memoryRowSchema>;
 // ============================================================================
 
 const memoryConfigSchema = z.object({
-  embeddingModel: z.string().default('openai/text-embedding-3-small'),
-  embeddingDimensions: z.number().positive().default(1536),
   recallLimit: z.number().positive().default(10),
   minImportanceForRecall: z.number().min(0).max(1).default(0.2),
 });

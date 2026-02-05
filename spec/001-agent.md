@@ -1547,8 +1547,7 @@ type MemoryType =
   | 'procedure' // How to do things
   | 'feedback' // User corrections and guidance
   | 'event' // External events that occurred
-  | 'entity' // Knowledge about things in user's world (links to EntityKnowledge)
-  | 'operator_manual'; // Procedural knowledge for recurring tasks
+  | 'entity'; // Knowledge about things in user's world (links to EntityKnowledge)
 ```
 
 #### Memory Operations
@@ -1578,105 +1577,6 @@ type RecallOptions = {
   minImportance?: number;
   timeRange?: { start: Date; end: Date };
 };
-```
-
-#### Operator Manuals
-
-The agent maintains **operator manuals** - procedural documentation about how to perform recurring tasks. These build consistency and improve over time through user feedback.
-
-```typescript
-type OperatorManual = {
-  id: string;
-  name: string; // "Expense Reports", "Weekly Report Format"
-  domain: string; // Category: 'finance', 'communication', 'travel', 'meetings'
-  description: string; // What this manual covers
-
-  // The procedure itself
-  steps: OperatorStep[];
-  bestPractices: string[]; // Tips accumulated over time
-  commonMistakes: string[]; // What to avoid
-
-  // User corrections and refinements
-  userCorrections: UserCorrection[];
-
-  // Usage tracking
-  lastUsedAt: string;
-  useCount: number;
-  successRate: number; // 0-1, based on user feedback
-
-  createdAt: string;
-  updatedAt: string;
-};
-
-type OperatorStep = {
-  order: number;
-  description: string;
-  toolsUsed?: string[]; // Tool IDs used in this step
-  conditions?: string; // When to skip or modify this step
-  example?: string; // Concrete example of this step
-};
-
-type UserCorrection = {
-  timestamp: string;
-  originalBehavior: string;
-  correctedBehavior: string;
-  context: string;
-};
-```
-
-**Operations:**
-
-```typescript
-type OperatorManualService = {
-  // CRUD
-  createManual: (
-    manual: Omit<OperatorManual, 'id' | 'createdAt' | 'updatedAt' | 'useCount' | 'successRate'>,
-  ) => Promise<OperatorManual>;
-  getManual: (id: string) => Promise<OperatorManual | null>;
-  updateManual: (id: string, updates: Partial<OperatorManual>) => Promise<OperatorManual>;
-
-  // Lookup
-  findByDomain: (domain: string) => Promise<OperatorManual[]>;
-  findByName: (name: string) => Promise<OperatorManual | null>;
-  searchManuals: (query: string) => Promise<OperatorManual[]>;
-
-  // Learning
-  recordUsage: (manualId: string, success: boolean) => Promise<void>;
-  addCorrection: (manualId: string, correction: Omit<UserCorrection, 'timestamp'>) => Promise<void>;
-  addBestPractice: (manualId: string, practice: string) => Promise<void>;
-
-  // Extraction (create manual from task execution)
-  extractFromTask: (taskId: string) => Promise<OperatorManual>;
-};
-```
-
-**How Manuals Evolve:**
-
-1. **Initial creation**: Agent performs a task, documents the approach
-2. **Refinement**: User corrects or adjusts ("actually, always CC finance on expenses")
-3. **Observation**: Agent notices patterns ("you always book aisle seats")
-4. **Consolidation**: Similar procedures merge into comprehensive manuals
-
-```
-[First time submitting expense report]
-Agent: "I'll submit this to the expense system. What's the approval process?"
-User: "Send to my manager Jamie, CC finance@company.com"
-
-[Agent creates manual entry]
-
-[Second time]
-Agent: "Submitting expense report - I'll send to Jamie and CC finance
-       like last time. The receipt format looks different though -
-       should I convert to PDF first?"
-User: "Yes, always PDF for receipts"
-
-[Agent updates manual]
-
-[Third time]
-Agent: "Expense report ready. PDF receipts attached, routed to Jamie
-       with finance CC'd. Anything else needed?"
-
-[Agent has learned the procedure]
 ```
 
 #### Learning from Feedback
@@ -1951,26 +1851,6 @@ CREATE TABLE entity_relations (
 
 CREATE INDEX idx_entity_relations_source ON entity_relations(source_entity_id);
 CREATE INDEX idx_entity_relations_target ON entity_relations(target_entity_id);
-
--- Operator Manuals (procedural knowledge)
-CREATE TABLE operator_manuals (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  domain TEXT NOT NULL,             -- 'finance', 'communication', 'travel', 'meetings'
-  description TEXT,
-  steps TEXT NOT NULL,              -- JSON array of OperatorStep
-  best_practices TEXT,              -- JSON array of strings
-  common_mistakes TEXT,             -- JSON array of strings
-  user_corrections TEXT,            -- JSON array of UserCorrection
-  last_used_at TEXT,
-  use_count INTEGER NOT NULL DEFAULT 0,
-  success_rate REAL NOT NULL DEFAULT 1.0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE INDEX idx_operator_manuals_domain ON operator_manuals(domain);
-CREATE INDEX idx_operator_manuals_name ON operator_manuals(name);
 
 -- Calendar events
 CREATE TABLE calendar_events (
@@ -2815,7 +2695,6 @@ This specification has been fully implemented. The system includes 580+ passing 
 - [x] Context-aware recall during conversations
 - [x] Conversation summarization (Tier 1)
 - [x] Entity Knowledge service (things in user's world)
-- [x] Operator Manual service (procedural knowledge)
 
 ### Phase 5: Long-Running Tasks - Complete
 

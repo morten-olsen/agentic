@@ -1,12 +1,17 @@
 import { OpenAIEmbeddings } from '@langchain/openai';
 
-import type { MemoryConfig } from './memory.schemas.ts';
-
 // ============================================================================
 // Types
 // ============================================================================
 
 type EmbeddingServiceConfig = {
+  model: string;
+  dimensions: number;
+  baseUrl: string;
+  apiKey: string;
+};
+
+type CreateEmbeddingServiceParams = {
   model: string;
   dimensions: number;
   baseUrl: string;
@@ -100,19 +105,16 @@ class EmbeddingService {
 }
 
 /**
- * Creates an EmbeddingService from memory config and LLM credentials.
+ * Creates an EmbeddingService from embedding and LLM credentials.
  */
-const createEmbeddingService = (
-  memoryConfig: MemoryConfig,
-  llmConfig: { baseUrl: string; apiKey: string },
-): EmbeddingService => {
+const createEmbeddingService = (params: CreateEmbeddingServiceParams): EmbeddingService => {
   return new EmbeddingService({
-    model: memoryConfig.embeddingModel,
-    dimensions: memoryConfig.embeddingDimensions,
-    baseUrl: llmConfig.baseUrl,
-    apiKey: llmConfig.apiKey,
+    model: params.model,
+    dimensions: params.dimensions,
+    baseUrl: params.baseUrl,
+    apiKey: params.apiKey,
   });
 };
 
-export type { EmbeddingServiceConfig };
+export type { EmbeddingServiceConfig, CreateEmbeddingServiceParams };
 export { EmbeddingService, createEmbeddingService, cosineSimilarity };

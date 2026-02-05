@@ -107,18 +107,6 @@ const configSchema = convict({
   },
 
   memory: {
-    embeddingModel: {
-      doc: 'Model to use for generating embeddings',
-      format: String,
-      default: 'openai/text-embedding-3-small',
-      env: 'GLADOS_MEMORY_EMBEDDING_MODEL',
-    },
-    embeddingDimensions: {
-      doc: 'Dimensions of the embedding vectors',
-      format: 'int',
-      default: 1536,
-      env: 'GLADOS_MEMORY_EMBEDDING_DIMENSIONS',
-    },
     recallLimit: {
       doc: 'Default number of memories to recall',
       format: 'int',
@@ -130,6 +118,52 @@ const configSchema = convict({
       format: Number,
       default: 0.2,
       env: 'GLADOS_MEMORY_MIN_IMPORTANCE',
+    },
+  },
+
+  embeddings: {
+    provider: {
+      doc: 'Embedding provider: "local" (HuggingFace, no API key) or "openai" (API-based)',
+      format: ['local', 'openai'],
+      default: 'local',
+      env: 'GLADOS_EMBEDDING_PROVIDER',
+    },
+    localModel: {
+      doc: 'HuggingFace model for local embeddings',
+      format: String,
+      default: 'Xenova/all-MiniLM-L6-v2',
+      env: 'GLADOS_EMBEDDING_LOCAL_MODEL',
+    },
+    localDimensions: {
+      doc: 'Dimensions for local embedding model',
+      format: 'int',
+      default: 384,
+      env: 'GLADOS_EMBEDDING_LOCAL_DIMENSIONS',
+    },
+    openaiBaseUrl: {
+      doc: 'Base URL for OpenAI-compatible embedding API',
+      format: String,
+      default: 'https://openrouter.ai/api/v1',
+      env: 'GLADOS_EMBEDDING_OPENAI_BASE_URL',
+    },
+    openaiApiKey: {
+      doc: 'API key for OpenAI-compatible embedding API',
+      format: String,
+      default: '',
+      env: 'GLADOS_EMBEDDING_OPENAI_API_KEY',
+      sensitive: true,
+    },
+    openaiModel: {
+      doc: 'Model for OpenAI-compatible embeddings',
+      format: String,
+      default: 'text-embedding-3-small',
+      env: 'GLADOS_EMBEDDING_OPENAI_MODEL',
+    },
+    openaiDimensions: {
+      doc: 'Dimensions for OpenAI embeddings',
+      format: 'int',
+      default: 1536,
+      env: 'GLADOS_EMBEDDING_OPENAI_DIMENSIONS',
     },
   },
 
@@ -258,10 +292,17 @@ type Config = {
     ownerId: number;
   };
   memory: {
-    embeddingModel: string;
-    embeddingDimensions: number;
     recallLimit: number;
     minImportanceForRecall: number;
+  };
+  embeddings: {
+    provider: 'local' | 'openai';
+    localModel: string;
+    localDimensions: number;
+    openaiBaseUrl: string;
+    openaiApiKey: string;
+    openaiModel: string;
+    openaiDimensions: number;
   };
   proactive: {
     enabled: boolean;
@@ -449,10 +490,13 @@ Configuration:
     Temperature: ${config.llm.temperature}
     Max Tokens: ${config.llm.maxTokens}
   Memory:
-    Embedding Model: ${config.memory.embeddingModel}
-    Embedding Dimensions: ${config.memory.embeddingDimensions}
     Recall Limit: ${config.memory.recallLimit}
     Min Importance: ${config.memory.minImportanceForRecall}
+  Embeddings:
+    Provider: ${config.embeddings.provider}
+    ${config.embeddings.provider === 'local' ? `Model: ${config.embeddings.localModel}` : `Model: ${config.embeddings.openaiModel}`}
+    ${config.embeddings.provider === 'local' ? `Dimensions: ${config.embeddings.localDimensions}` : `Dimensions: ${config.embeddings.openaiDimensions}`}
+    ${config.embeddings.provider === 'openai' ? `API Key: ${config.embeddings.openaiApiKey ? '***configured***' : '(not set)'}` : ''}
   Personality:
     Name: ${config.personality.name}
     Role: ${config.personality.role}

@@ -17,22 +17,6 @@ const entityTypeSchema = z.enum([
 type EntityType = z.infer<typeof entityTypeSchema>;
 
 // ============================================================================
-// Entity Relation
-// ============================================================================
-
-const entityRelationSchema = z.object({
-  id: z.string(),
-  sourceEntityId: z.string(),
-  targetEntityId: z.string(),
-  targetType: z.enum(['entity', 'contact', 'project']),
-  relationshipType: z.string(), // 'has_contact', 'belongs_to', 'uses_template', etc.
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  createdAt: z.string(),
-});
-
-type EntityRelation = z.infer<typeof entityRelationSchema>;
-
-// ============================================================================
 // Entity Knowledge
 // ============================================================================
 
@@ -88,73 +72,9 @@ const updateEntityInputSchema = z.object({
 type UpdateEntityInput = z.infer<typeof updateEntityInputSchema>;
 
 // ============================================================================
-// Create Relation Input
-// ============================================================================
-
-const createRelationInputSchema = z.object({
-  sourceEntityId: z.string(),
-  targetEntityId: z.string(),
-  targetType: z.enum(['entity', 'contact', 'project']),
-  relationshipType: z.string(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
-
-type CreateRelationInput = z.input<typeof createRelationInputSchema>;
-
-// ============================================================================
-// Database Rows
-// ============================================================================
-
-const entityRowSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  type: z.string(),
-  description: z.string().nullable(),
-  attributes: z.string().nullable(), // JSON
-  source: z.string(),
-  confidence: z.number(),
-  last_referenced_at: z.string(),
-  reference_count: z.number(),
-  created_at: z.string(),
-  updated_at: z.string(),
-});
-
-type EntityRow = z.infer<typeof entityRowSchema>;
-
-const relationRowSchema = z.object({
-  id: z.string(),
-  source_entity_id: z.string(),
-  target_entity_id: z.string(),
-  target_type: z.string(),
-  relationship_type: z.string(),
-  metadata: z.string().nullable(), // JSON
-  created_at: z.string(),
-});
-
-type RelationRow = z.infer<typeof relationRowSchema>;
-
-// ============================================================================
 // Exports
 // ============================================================================
 
-export type {
-  EntityType,
-  EntityRelation,
-  EntityKnowledge,
-  CreateEntityInput,
-  UpdateEntityInput,
-  CreateRelationInput,
-  EntityRow,
-  RelationRow,
-};
+export type { EntityType, EntityKnowledge, CreateEntityInput, UpdateEntityInput };
 
-export {
-  entityTypeSchema,
-  entityRelationSchema,
-  entityKnowledgeSchema,
-  createEntityInputSchema,
-  updateEntityInputSchema,
-  createRelationInputSchema,
-  entityRowSchema,
-  relationRowSchema,
-};
+export { entityTypeSchema, entityKnowledgeSchema, createEntityInputSchema, updateEntityInputSchema };
