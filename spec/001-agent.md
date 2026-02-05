@@ -1243,7 +1243,7 @@ ${personality.coreInstructions}
 
 ### 9. Orchestrator
 
-The main agent loop built with LangGraph. Manages conversation state, decides when to use tools, coordinates sub-agents, and integrates with the foundation layer.
+The main agent loop built with LangGraph. Manages conversation state, decides when to use tools, and integrates with the foundation layer.
 
 ```
 src/
@@ -1410,7 +1410,7 @@ type ToolSet = {
 
 #### Discovery Agent
 
-A specialized sub-agent that helps the orchestrator find and activate appropriate tool sets.
+A specialized mechanism that helps the orchestrator find and activate appropriate tool sets.
 
 ```typescript
 type DiscoveryRequest = {
@@ -1465,83 +1465,6 @@ const taskTemplates: TaskTemplate[] = [
   },
 ];
 ```
-
-#### Agent Builder and Agent Registry
-
-Sub-agents aren't hardcoded - they can be created dynamically by a specialized meta-agent called the **Agent Builder**. Created agents are stored in an **Agent Registry** for reuse.
-
-```typescript
-type ModelTier = 'fast' | 'balanced' | 'capable' | 'premium';
-
-type AgentSpecification = {
-  id: string;
-  name: string;
-  purpose: string;
-
-  // Configuration
-  systemPrompt: string;
-  tools: string[]; // Tool IDs available to this agent
-  modelTier: ModelTier;
-
-  // Constraints
-  maxTurns: number;
-  canAskUser: boolean;
-  riskCeiling: RiskLevel; // Max risk level it can execute
-
-  // Evolution
-  createdAt: string;
-  lastUsedAt: string;
-  useCount: number;
-  feedbackScore: number; // Running average of outcomes (0-1)
-
-  // Lineage
-  createdBy: 'builtin' | 'agent_builder';
-  parentAgentId?: string; // If evolved from another
-};
-
-type AgentFeedback = {
-  agentId: string;
-  taskId: string;
-  outcome: 'success' | 'partial' | 'failure';
-  userRating?: number; // 1-5 if user provided
-  notes?: string;
-};
-```
-
-**Agent Registry Operations:**
-
-```typescript
-type AgentRegistry = {
-  // CRUD
-  getAgent: (id: string) => Promise<AgentSpecification | null>;
-  listAgents: () => Promise<AgentSpecification[]>;
-  createAgent: (
-    spec: Omit<AgentSpecification, 'id' | 'createdAt' | 'lastUsedAt' | 'useCount' | 'feedbackScore'>,
-  ) => Promise<AgentSpecification>;
-  updateAgent: (id: string, updates: Partial<AgentSpecification>) => Promise<AgentSpecification>;
-  deleteAgent: (id: string) => Promise<boolean>;
-
-  // Discovery
-  findByCapability: (capability: string) => Promise<AgentSpecification[]>;
-  findByPurpose: (purpose: string) => Promise<AgentSpecification[]>; // Semantic search
-
-  // Evolution
-  recordUsage: (agentId: string) => Promise<void>;
-  recordFeedback: (feedback: AgentFeedback) => Promise<void>;
-  evolveAgent: (agentId: string, modifications: Partial<AgentSpecification>) => Promise<AgentSpecification>;
-};
-```
-
-**Built-in Agents:**
-
-| Agent          | Purpose                             | Tools                           | Model    |
-| -------------- | ----------------------------------- | ------------------------------- | -------- |
-| Research Scout | Web research, summarization         | search, fetch, summarize        | balanced |
-| Email Drafter  | Compose emails in user's voice      | templates, contacts, calendar   | capable  |
-| Code Reviewer  | Review code changes                 | git, filesystem, linter         | capable  |
-| Data Analyst   | Analyze data, create visualizations | spreadsheet, calculator, charts | capable  |
-
-The Agent Builder can create new specialists when needed and evolve existing ones based on feedback. This allows the agent ecosystem to grow organically based on actual usage patterns.
 
 ### 12. Model Selection
 
@@ -2233,42 +2156,6 @@ CREATE TABLE interrupts (
 CREATE INDEX idx_interrupts_conversation ON interrupts(conversation_id);
 CREATE INDEX idx_interrupts_pending ON interrupts(responded_at) WHERE responded_at IS NULL;
 
--- Agent specifications (for Agent Registry)
-CREATE TABLE agent_specifications (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  purpose TEXT NOT NULL,
-  system_prompt TEXT NOT NULL,
-  tools TEXT NOT NULL,              -- JSON array of tool IDs
-  model_tier TEXT NOT NULL,         -- 'fast' | 'balanced' | 'capable' | 'premium'
-  max_turns INTEGER NOT NULL DEFAULT 10,
-  can_ask_user INTEGER NOT NULL DEFAULT 0,
-  risk_ceiling TEXT NOT NULL DEFAULT 'medium',  -- Max risk level
-  created_by TEXT NOT NULL DEFAULT 'builtin',   -- 'builtin' | 'agent_builder'
-  parent_agent_id TEXT REFERENCES agent_specifications(id),
-  use_count INTEGER NOT NULL DEFAULT 0,
-  feedback_score REAL NOT NULL DEFAULT 0.5,
-  last_used_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE INDEX idx_agent_specifications_purpose ON agent_specifications(purpose);
-CREATE INDEX idx_agent_specifications_created_by ON agent_specifications(created_by);
-
--- Agent feedback tracking
-CREATE TABLE agent_feedback (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL REFERENCES agent_specifications(id),
-  task_id TEXT,
-  outcome TEXT NOT NULL,            -- 'success' | 'partial' | 'failure'
-  user_rating INTEGER,              -- 1-5
-  notes TEXT,
-  created_at TEXT NOT NULL
-);
-
-CREATE INDEX idx_agent_feedback_agent ON agent_feedback(agent_id);
-
 -- User tasks (distinct from agent delegated_tasks)
 CREATE TABLE user_tasks (
   id TEXT PRIMARY KEY,
@@ -2950,9 +2837,6 @@ This specification has been fully implemented. The system includes 580+ passing 
 
 - [x] Tool set organization
 - [x] Discovery agent for tool selection
-- [x] Agent Registry for sub-agent management
-- [x] Agent specifications with model tier selection
-- [x] Agent feedback tracking
 
 ### External Clients - Complete
 
@@ -3226,7 +3110,7 @@ This specification documents the complete initial implementation of GLaDOS. The 
 - **Memory**: Persistent storage with semantic search and procedural knowledge
 - **Task Management**: User tasks and multi-step delegated workflows
 - **Proactive Behavior**: Scheduled checks and intelligent notifications
-- **Extensibility**: Dynamic tool discovery and sub-agent management
+- **Extensibility**: Dynamic tool discovery
 
 Future capabilities (reactive events and learning) are documented in [`spec/future-phases.md`](./future-phases.md).
 

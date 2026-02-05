@@ -60,6 +60,10 @@ const triggerSchema = z.object({
   nextInvocationAt: z.string().optional(), // ISO8601 (calculated)
   lastError: z.string().optional(),
 
+  // Continuation (state between invocations)
+  continuation: z.string().nullable(),
+  continuationUpdatedAt: z.string().nullable(), // ISO8601 timestamp
+
   // Relationships
   createdByConversationId: z.string().optional(),
 
@@ -99,6 +103,7 @@ const updateTriggerInputSchema = z.object({
   maxInvocations: z.number().int().positive().nullable().optional(),
   endsAt: z.string().nullable().optional(),
   status: z.enum(['active', 'paused']).optional(), // Can only pause/resume via update
+  continuation: z.string().nullish(), // Note for next invocation (null to clear)
 });
 
 type UpdateTriggerInput = z.input<typeof updateTriggerInputSchema>;
@@ -125,6 +130,8 @@ const triggerRowSchema = z.object({
   last_invoked_at: z.string().nullable(),
   next_invocation_at: z.string().nullable(),
   last_error: z.string().nullable(),
+  continuation: z.string().nullable(),
+  continuation_updated_at: z.string().nullable(),
 
   // Relationships
   created_by_conversation_id: z.string().nullable(),
@@ -190,6 +197,8 @@ const triggerContextSchema = z.object({
   setupContext: z.string().optional(),
   invocationCount: z.number(),
   schedule: triggerScheduleSchema,
+  continuation: z.string().nullable(), // Note from previous invocation
+  continuationUpdatedAt: z.string().nullable(), // When the continuation was last updated
 });
 
 type TriggerContext = z.infer<typeof triggerContextSchema>;

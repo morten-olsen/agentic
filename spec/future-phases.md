@@ -11,7 +11,7 @@ The initial GLaDOS implementation (Phases 1-7) provides a complete personal AI a
 - Persistent memory with semantic search
 - Long-running task management
 - Proactive scheduling and notifications
-- Dynamic tool discovery and agent registry
+- Dynamic tool discovery
 
 This document specifies two additional phases that will extend GLaDOS with reactive event processing and advanced learning capabilities.
 

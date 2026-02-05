@@ -12,13 +12,13 @@ import * as migration003 from './migrations/003_interrupts.ts';
 import * as migration004 from './migrations/004_memory.ts';
 import * as migration005 from './migrations/005_entity_knowledge.ts';
 import * as migration006 from './migrations/006_operator_manuals.ts';
-import * as migration007 from './migrations/007_agent_registry.ts';
 import * as migration008 from './migrations/008_telegram_chats.ts';
 import * as migration009 from './migrations/009_tasks.ts';
 import * as migration010 from './migrations/010_proactive.ts';
 import * as migration011 from './migrations/011_notifications.ts';
 import * as migration012 from './migrations/012_day_planner.ts';
 import * as migration013 from './migrations/013_triggers.ts';
+import * as migration014 from './migrations/014_trigger_continuation.ts';
 
 type MigrationSource = {
   getMigrations: () => Promise<string[]>;
@@ -34,13 +34,13 @@ const createMigrationSource = (): MigrationSource => {
     '004_memory': migration004,
     '005_entity_knowledge': migration005,
     '006_operator_manuals': migration006,
-    '007_agent_registry': migration007,
     '008_telegram_chats': migration008,
     '009_tasks': migration009,
     '010_proactive': migration010,
     '011_notifications': migration011,
     '012_day_planner': migration012,
     '013_triggers': migration013,
+    '014_trigger_continuation': migration014,
   };
 
   return {

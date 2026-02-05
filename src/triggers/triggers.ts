@@ -470,6 +470,8 @@ class TriggerService {
         setupContext: trigger.setupContext,
         invocationCount: trigger.invocationCount + 1,
         schedule: trigger.schedule,
+        continuation: trigger.continuation,
+        continuationUpdatedAt: trigger.continuationUpdatedAt,
       };
 
       // Invoke the orchestrator in background mode

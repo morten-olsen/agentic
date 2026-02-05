@@ -7,16 +7,19 @@ This document provides context for AI coding agents working on this codebase. **
 GLaDOS (General Learning and Decision Orchestration System) is a **personal AI assistant** designed to be "Jarvis for yourself". It maintains a rich model of you (identity, projects, goals, relationships), operates proactively (not just reactively), handles long-running tasks, and learns from every interaction.
 
 **Key differentiators from a generic chatbot:**
-- Knows *who you are* (User Model, Contacts, Calendar as core infrastructure)
+
+- Knows _who you are_ (User Model, Contacts, Calendar as core infrastructure)
 - Anticipates needs (Trigger System, daily briefings, day planning)
 - Manages multi-step tasks that span hours/days (Task Queue)
 - Human-in-the-loop for trust (risk-gated tools, approval flows)
 
 **Key Documentation:**
-- **Spec**: `spec/agent.md` - Technical specification (types, schemas, implementation phases)
-- **Telegram Spec**: `spec/telegram.md` - Telegram bot integration specification
-- **Triggers Spec**: `spec/triggers.md` - Trigger system specification
-- **Day Planner Spec**: `spec/day-planner.md` - Daily planning sessions and context
+
+- **Spec**: `spec/001-agent.md` - Technical specification (types, schemas, implementation phases)
+- **Telegram Spec**: `spec/002-telegram.md` - Telegram bot integration specification
+- **Triggers Spec**: `spec/003-triggers.md` - Trigger system specification
+- **Day Planner Spec**: `spec/004-day-planner.md` - Daily planning sessions and context
+- **Trigger Continuation Spec**: `spec/005-trigger-continuation.md` - Stateful triggers through continuation notes
 - **Architecture**: `docs/agent-architecture.md` - Conceptual guide (how the agent thinks)
 - **External Clients**: `docs/external-clients.md` - Guide for building external client integrations
 - **Coding Standards**: `docs/coding-standards.md` - TypeScript conventions
@@ -25,14 +28,14 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| Runtime | Node.js 22+ with `--experimental-strip-types` |
-| Agent Framework | LangChain + LangGraph |
-| Database | Knex + SQLite (+ sqlite-vss for Phase 4) |
-| Validation | Zod 4 |
-| Configuration | Convict |
-| Testing | Vitest |
+| Component       | Technology                                    |
+| --------------- | --------------------------------------------- |
+| Runtime         | Node.js 22+ with `--experimental-strip-types` |
+| Agent Framework | LangChain + LangGraph                         |
+| Database        | Knex + SQLite (+ sqlite-vss for Phase 4)      |
+| Validation      | Zod 4                                         |
+| Configuration   | Convict                                       |
+| Testing         | Vitest                                        |
 
 ## Project Structure
 
@@ -92,18 +95,14 @@ src/memory/
     └── operator-manuals.store.ts
 ```
 
-### Orchestrator Modules (Phase 7)
+### Orchestrator Modules
 
 ```
 src/orchestrator/
 ├── orchestrator.ts        # Main agent graph
 ├── orchestrator.state.ts  # State annotation
 ├── orchestrator.nodes.ts  # Graph nodes
-├── interrupts/            # Human-in-the-loop
-└── agent-registry/        # Sub-agent management
-    ├── agent-registry.ts
-    ├── agent-registry.schemas.ts
-    └── agent-registry.store.ts
+└── interrupts/            # Human-in-the-loop
 ```
 
 ### External Clients
@@ -161,8 +160,10 @@ src/triggers/
 ```
 
 The trigger system provides agent-managed scheduled invocations:
+
 - **Schedules**: One-time (`at` datetime) or recurring (`cron` expression)
 - **Agent tools**: `create_trigger`, `update_trigger`, `delete_trigger`, `list_triggers`, `notify`
+- **Continuation**: Agents can persist a plain text note between invocations via `update_trigger({ continuation: "..." })` to avoid redundant notifications and track state changes
 - **Self-management**: Triggers can update or delete themselves
 - **Notifications**: Background triggers can notify users via Telegram using the `notify` tool
 - **Pre-installed triggers**: `daily-briefing`, `calendar-lookahead`, `stale-followups`
@@ -179,6 +180,7 @@ src/day-planner/
 ```
 
 The day planner provides:
+
 - **Planning sessions**: Interactive daily planning with the agent
 - **Day plan context**: Loaded into every agent interaction
 - **Priorities**: Ordered list with completion tracking
@@ -270,6 +272,7 @@ pnpm conversation:test status <id>
 ```
 
 When working with an AI coding agent to debug:
+
 1. Get the conversation ID from `/id` (Telegram) or the CLI
 2. Run `pnpm conversation <id>` and share the output
 3. The agent can analyze message flow, tool calls, checkpoint state, and interrupts
@@ -318,11 +321,12 @@ All initial phases are complete:
 4. **Memory** - Storage, Embeddings, Recall, Entity Knowledge, Operator Manuals ✅
 5. **Long-Running Tasks** - User Tasks, Delegated Tasks, Multi-step workflows ✅
 6. **Proactive & Notifications** - Scheduler, Channels, Attention Budget ✅
-7. **Tool Discovery** - Tool Sets, Discovery Agent, Agent Registry ✅
+7. **Tool Discovery** - Tool Sets, Discovery Agent ✅
 
 ### Future Phases
 
 See `spec/future-phases.md` for planned capabilities:
+
 - Phase 8: Reactive Events (webhooks, external integrations)
 - Phase 9: Learning & Refinement (feedback, consolidation, pattern extraction)
 
@@ -403,13 +407,6 @@ The "who, where, when" foundation:
 - **Attention Budget**: Tracks interruption frequency to avoid over-notifying
 - **Quiet hours**: Configurable, with critical override
 - **Focus blocks**: Manual DND mode with automatic expiry
-
-### Agent Registry (Phase 7)
-
-- **Agent Specifications**: Define sub-agents with purpose, tools, model tier
-- **Evolution**: Agents can be evolved from parents with modifications
-- **Feedback Tracking**: Usage and outcome tracking for agent improvement
-- **Model Selection**: fast | balanced | capable | premium tiers
 
 ## Zod 4 Notes
 

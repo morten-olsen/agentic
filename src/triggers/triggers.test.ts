@@ -454,6 +454,78 @@ describe('Trigger Store', () => {
       expect(updated?.status).toBe('paused');
     });
 
+    it('creates a trigger with null continuation by default', async () => {
+      const created = await createTrigger(db(), {
+        name: 'test-trigger',
+        goal: 'Test goal',
+        schedule: { type: 'once', at: '2024-03-15T10:00:00Z' },
+      });
+
+      expect(created.continuation).toBeNull();
+      expect(created.continuationUpdatedAt).toBeNull();
+    });
+
+    it('updates a trigger continuation and sets timestamp', async () => {
+      const created = await createTrigger(db(), {
+        name: 'test-trigger',
+        goal: 'Test goal',
+        schedule: { type: 'once', at: '2024-03-15T10:00:00Z' },
+      });
+
+      const updated = await updateTrigger(db(), created.id, {
+        continuation: 'Notified user about delay on Northern line',
+      });
+
+      expect(updated?.continuation).toBe('Notified user about delay on Northern line');
+      expect(updated?.continuationUpdatedAt).not.toBeNull();
+      // Verify it's a valid ISO8601 timestamp
+      expect(new Date(updated!.continuationUpdatedAt!).toISOString()).toBe(updated?.continuationUpdatedAt);
+    });
+
+    it('clears continuation and timestamp when set to null', async () => {
+      const created = await createTrigger(db(), {
+        name: 'test-trigger',
+        goal: 'Test goal',
+        schedule: { type: 'once', at: '2024-03-15T10:00:00Z' },
+      });
+
+      // Set a continuation
+      await updateTrigger(db(), created.id, {
+        continuation: 'Some note',
+      });
+
+      // Clear it
+      const updated = await updateTrigger(db(), created.id, {
+        continuation: null,
+      });
+
+      expect(updated?.continuation).toBeNull();
+      expect(updated?.continuationUpdatedAt).toBeNull();
+    });
+
+    it('preserves continuation and timestamp when not updating it', async () => {
+      const created = await createTrigger(db(), {
+        name: 'test-trigger',
+        goal: 'Test goal',
+        schedule: { type: 'once', at: '2024-03-15T10:00:00Z' },
+      });
+
+      // Set a continuation
+      const withContinuation = await updateTrigger(db(), created.id, {
+        continuation: 'Some note',
+      });
+      const originalTimestamp = withContinuation?.continuationUpdatedAt;
+
+      // Update something else
+      const updated = await updateTrigger(db(), created.id, {
+        goal: 'New goal',
+      });
+
+      expect(updated?.continuation).toBe('Some note');
+      expect(updated?.continuationUpdatedAt).toBe(originalTimestamp);
+      expect(updated?.goal).toBe('New goal');
+    });
+
     it('deletes a trigger', async () => {
       const created = await createTrigger(db(), {
         name: 'test-trigger',

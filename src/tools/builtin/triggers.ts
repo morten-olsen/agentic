@@ -132,6 +132,7 @@ const updateTriggerInputSchema = z.object({
   maxInvocations: z.number().int().positive().nullable().optional().describe('New max invocations (null to remove)'),
   endsAt: z.string().nullable().optional().describe('New end date (null to remove)'),
   status: z.enum(['active', 'paused']).optional().describe('Pause or resume the trigger'),
+  continuation: z.string().nullish().describe('Note for next invocation (null to clear)'),
 });
 
 const updateTriggerOutputSchema = z.object({
@@ -144,10 +145,14 @@ type UpdateTriggerOutput = z.infer<typeof updateTriggerOutputSchema>;
 const updateTriggerTool: ToolDefinition<UpdateTriggerInput, UpdateTriggerOutput> = {
   id: 'triggers.update_trigger',
   name: 'UpdateTrigger',
-  description: `Update a trigger's configuration.
+  description: `Update a trigger's configuration or state.
 
 When running from a trigger invocation, omit triggerId to update the trigger that
 invoked this conversation. When called from a user conversation, triggerId is required.
+
+Use "continuation" to leave a note for your next invocation. Write it like a message
+to your future self - what did you find? What did you notify the user about? This
+helps avoid redundant notifications and track changes over time. Use null to clear.
 
 Use status='paused' to temporarily disable a trigger.
 Use status='active' to resume a paused trigger.`,
@@ -171,6 +176,14 @@ Use status='active' to resume a paused trigger.`,
       input: { goal: 'Updated goal for the trigger' },
       description: 'Update own trigger goal (when running from trigger)',
     },
+    {
+      input: { continuation: 'Notified user about 15-minute delay on Northern line. Train status: delayed.' },
+      description: 'Save continuation note for next invocation',
+    },
+    {
+      input: { continuation: null },
+      description: 'Clear continuation note',
+    },
   ],
   execute: async (input: UpdateTriggerInput, context: ToolContext): Promise<UpdateTriggerOutput> => {
     const triggerService = context.services.get(TriggerService);
@@ -189,6 +202,7 @@ Use status='active' to resume a paused trigger.`,
     if (input.maxInvocations !== undefined) updateInput.maxInvocations = input.maxInvocations;
     if (input.endsAt !== undefined) updateInput.endsAt = input.endsAt;
     if (input.status !== undefined) updateInput.status = input.status;
+    if (input.continuation !== undefined) updateInput.continuation = input.continuation;
 
     // Handle schedule conversion
     if (input.schedule) {

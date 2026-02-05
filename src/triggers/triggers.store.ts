@@ -47,6 +47,8 @@ const rowToTrigger = (row: TriggerRow): Trigger => {
     lastInvokedAt: row.last_invoked_at ?? undefined,
     nextInvocationAt: row.next_invocation_at ?? undefined,
     lastError: row.last_error ?? undefined,
+    continuation: row.continuation ?? null,
+    continuationUpdatedAt: row.continuation_updated_at ?? null,
     createdByConversationId: row.created_by_conversation_id ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -92,6 +94,8 @@ const createTrigger = async (db: Knex, input: CreateTriggerInput, conversationId
     last_invoked_at: null,
     next_invocation_at: null,
     last_error: null,
+    continuation: null,
+    continuation_updated_at: null,
     created_by_conversation_id: conversationId ?? null,
     created_at: timestamp,
     updated_at: timestamp,
@@ -126,6 +130,7 @@ type InternalTriggerUpdate = Omit<UpdateTriggerInput, 'status'> & {
   lastInvokedAt?: string;
   nextInvocationAt?: string | null;
   lastError?: string | null;
+  continuation?: string | null;
   status?: TriggerStatus; // Internal can set any status
 };
 
@@ -155,6 +160,11 @@ const updateTrigger = async (db: Knex, id: string, updates: InternalTriggerUpdat
   if (updates.lastInvokedAt !== undefined) updateData.last_invoked_at = updates.lastInvokedAt;
   if (updates.nextInvocationAt !== undefined) updateData.next_invocation_at = updates.nextInvocationAt;
   if (updates.lastError !== undefined) updateData.last_error = updates.lastError;
+  if (updates.continuation !== undefined) {
+    updateData.continuation = updates.continuation;
+    // Update timestamp when continuation changes (including clearing)
+    updateData.continuation_updated_at = updates.continuation === null ? null : timestamp;
+  }
 
   const count = await db('triggers').where({ id }).update(updateData);
   if (count === 0) return null;
