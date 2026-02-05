@@ -20,11 +20,13 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 - **Triggers Spec**: `spec/003-triggers.md` - Trigger system specification
 - **Day Planner Spec**: `spec/004-day-planner.md` - Daily planning sessions and context
 - **Trigger Continuation Spec**: `spec/005-trigger-continuation.md` - Stateful triggers through continuation notes
+- **Skills Spec**: `spec/006-skills.md` - Domain-specific capabilities with gated activation
 - **Architecture**: `docs/agent-architecture.md` - Conceptual guide (how the agent thinks)
 - **External Clients**: `docs/external-clients.md` - Guide for building external client integrations
 - **Coding Standards**: `docs/coding-standards.md` - TypeScript conventions
 - **Testing Strategy**: `docs/testing-strategy.md` - Testing patterns and infrastructure
 - **Debugging**: `docs/debugging.md` - Conversation-level debugging tools and techniques
+- **Skills**: `docs/skills.md` - Skills system usage and development guide
 
 ## Tech Stack
 
@@ -199,12 +201,39 @@ src/notifications/
 └── notifications.test.ts  # Unit tests
 ```
 
+### Skills System (Phase 8)
+
+```
+src/skills/
+├── skills.ts              # SkillRegistry class
+├── skills.schemas.ts      # Skill, ActiveSkill, ActivationRisk types
+├── skills.store.ts        # Skill activation tracking (analytics/debugging)
+├── skills.tools.ts        # Skill management tools
+├── skills.context.ts      # Domain knowledge injection
+├── skills.node.ts         # Graph node for activation flow
+├── skills.errors.ts       # Custom errors
+├── skills.test.ts         # Unit tests
+└── index.ts               # Barrel export
+```
+
+The skills system provides domain-specific capabilities with gated activation:
+
+- **Skill Registration**: Skills define tools, domain knowledge, and activation risk
+- **Risk Levels**: `none`, `low`, `medium`, `high`, `critical` - determines if approval is required
+- **Activation Tools**: Each skill generates an `activate_<skillId>` tool
+- **Management Tools**: `list_skills` and `deactivate_skill` for skill management
+- **Domain Knowledge**: Markdown instructions injected into system prompt on activation
+- **Per-Conversation State**: Active skills reset when conversation ends (not persisted)
+- **Interrupt Flow**: High/critical risk skills require user approval before activation
+
+**Agent tools**: `activate_<skillId>`, `deactivate_skill`, `list_skills`
+
 ### Future Modules (see spec/future-phases.md)
 
 ```
 src/
-├── ingress/               # Event sources (Phase 8)
-└── learning/              # Feedback and consolidation (Phase 9)
+├── ingress/               # Event sources (Phase 9)
+└── learning/              # Feedback and consolidation (Phase 10)
 ```
 
 ## Key Conventions
@@ -307,7 +336,7 @@ When working on this codebase:
 
 ## Current Status
 
-**Version**: 1.0 - Initial Implementation Complete (Phases 1-7) - 580+ passing tests
+**Version**: 1.0 - Initial Implementation Complete (Phases 1-8) - 625+ passing tests
 
 **External Clients**: Telegram bot available (see `spec/telegram.md`)
 
@@ -322,13 +351,14 @@ All initial phases are complete:
 5. **Long-Running Tasks** - User Tasks, Delegated Tasks, Multi-step workflows ✅
 6. **Proactive & Notifications** - Scheduler, Channels, Attention Budget ✅
 7. **Tool Discovery** - Tool Sets, Discovery Agent ✅
+8. **Skills System** - Gated domain-specific capabilities, approval flow ✅
 
 ### Future Phases
 
 See `spec/future-phases.md` for planned capabilities:
 
-- Phase 8: Reactive Events (webhooks, external integrations)
-- Phase 9: Learning & Refinement (feedback, consolidation, pattern extraction)
+- Phase 9: Reactive Events (webhooks, external integrations)
+- Phase 10: Learning & Refinement (feedback, consolidation, pattern extraction)
 
 ### Running the CLI
 

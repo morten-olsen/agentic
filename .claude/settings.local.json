@@ -38,7 +38,8 @@
       "Bash(kubectl cp:*)",
       "Bash(kubectl exec:*)",
       "Bash(kubectl logs:*)",
-      "Bash(pnpm exec eslint:*)"
+      "Bash(pnpm exec eslint:*)",
+      "Bash(pnpm exec prettier:*)"
     ]
   }
 }

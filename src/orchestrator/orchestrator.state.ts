@@ -1,5 +1,7 @@
 import { Annotation, MessagesAnnotation } from '@langchain/langgraph';
 
+import type { ActiveSkill, PendingSkillActivation } from '../skills/skills.schemas.ts';
+
 import type { ToolCall } from './orchestrator.schemas.ts';
 import type { PendingToolCall } from './orchestrator.risk-gate.ts';
 import type { Interrupt } from './interrupts/interrupts.ts';
@@ -82,6 +84,18 @@ const OrchestratorAnnotation = Annotation.Root({
   turnLimitReached: Annotation<boolean>({
     reducer: (_, update) => update,
     default: () => false,
+  }),
+
+  // Phase 8: Skills - Currently active skills
+  activeSkills: Annotation<ActiveSkill[]>({
+    reducer: (_, update) => update,
+    default: () => [],
+  }),
+
+  // Phase 8: Skills - Pending skill activation awaiting approval
+  pendingSkillActivation: Annotation<PendingSkillActivation | null>({
+    reducer: (_, update) => update,
+    default: () => null,
   }),
 });
 

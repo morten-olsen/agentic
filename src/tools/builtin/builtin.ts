@@ -11,6 +11,7 @@ import { registerTaskTools } from './tasks.ts';
 import { registerNotificationTools } from './notifications.ts';
 import { registerDayPlannerTools } from './day-planner.ts';
 import { registerTriggerTools } from './triggers.ts';
+import { registerSkillTools } from './skills.ts';
 
 /**
  * Registers all builtin tools with the registry.
@@ -30,6 +31,7 @@ const registerBuiltinTools = (registry: ToolRegistry): void => {
   registerNotificationTools(registry);
   registerDayPlannerTools(registry);
   registerTriggerTools(registry);
+  registerSkillTools(registry);
 };
 
 // Re-export individual tools for direct access
@@ -49,5 +51,6 @@ export { registerTaskTools } from './tasks.ts';
 export { registerNotificationTools } from './notifications.ts';
 export { registerDayPlannerTools } from './day-planner.ts';
 export { registerTriggerTools } from './triggers.ts';
+export { registerSkillTools } from './skills.ts';
 
 export { registerBuiltinTools };

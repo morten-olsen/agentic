@@ -1,5 +1,8 @@
 import type { AgentContext } from '../context/context.ts';
 import type { TriggerContext } from '../triggers/triggers.schemas.ts';
+import type { ActiveSkill } from '../skills/skills.schemas.ts';
+import type { SkillRegistry } from '../skills/skills.ts';
+import { generateActiveSkillsContext } from '../skills/skills.context.ts';
 
 import type { PersonalityConfig, Style, Traits } from './personality.schemas.ts';
 
@@ -249,13 +252,35 @@ const generateTriggerInstructions = (triggerContext: TriggerContext): string => 
 };
 
 /**
+ * Options for building the system prompt.
+ */
+type BuildSystemPromptOptions = {
+  context?: AgentContext;
+  triggerContext?: TriggerContext;
+  activeSkills?: ActiveSkill[];
+  skillRegistry?: SkillRegistry;
+};
+
+/**
  * Builds the complete system prompt from personality config and context.
  */
 const buildSystemPrompt = (
   config: PersonalityConfig,
-  context?: AgentContext,
+  contextOrOptions?: AgentContext | BuildSystemPromptOptions,
   triggerContext?: TriggerContext,
 ): string => {
+  // Support both old signature (config, context?, triggerContext?) and new options object
+  let options: BuildSystemPromptOptions;
+  if (contextOrOptions && 'timezone' in contextOrOptions) {
+    // Old signature: AgentContext passed directly
+    options = { context: contextOrOptions, triggerContext };
+  } else if (contextOrOptions) {
+    // New signature: options object
+    options = contextOrOptions;
+  } else {
+    options = { triggerContext };
+  }
+
   const sections: string[] = [];
 
   // Identity
@@ -294,21 +319,30 @@ const buildSystemPrompt = (
   }
 
   // Context-aware instructions
-  if (context) {
-    const contextInstructions = generateContextInstructions(context);
+  if (options.context) {
+    const contextInstructions = generateContextInstructions(options.context);
     if (contextInstructions) {
       sections.push(`Current context:\n${contextInstructions}`);
     }
   }
 
+  // Active skills context
+  if (options.activeSkills && options.skillRegistry && options.activeSkills.length > 0) {
+    const skillsContext = generateActiveSkillsContext(options.activeSkills, options.skillRegistry);
+    if (skillsContext) {
+      sections.push(skillsContext);
+    }
+  }
+
   // Trigger-specific instructions
-  if (triggerContext) {
-    sections.push(generateTriggerInstructions(triggerContext));
+  if (options.triggerContext) {
+    sections.push(generateTriggerInstructions(options.triggerContext));
   }
 
   return sections.join('\n\n');
 };
 
+export type { BuildSystemPromptOptions };
 export {
   buildSystemPrompt,
   generateStyleInstructions,

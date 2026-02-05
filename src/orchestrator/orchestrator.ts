@@ -11,6 +11,8 @@ import { toLangChainTools } from '../tools/adapters/adapters.langchain.ts';
 import { registerBuiltinTools } from '../tools/builtin/builtin.ts';
 import { MemoryService } from '../memory/memory.ts';
 import type { TriggerContext } from '../triggers/triggers.schemas.ts';
+import { SkillRegistry } from '../skills/skills.ts';
+import { formatSkillActivationPrompt, handleSkillActivationApproval } from '../skills/skills.node.ts';
 
 import type {
   OrchestratorConfigInput,
@@ -46,6 +48,7 @@ class OrchestratorService {
   #toolRegistry: ToolRegistry | null = null;
   #interruptService: InterruptService;
   #memoryService: MemoryService | null = null;
+  #skillRegistry: SkillRegistry | null = null;
 
   constructor(services: Services) {
     this.#services = services;
@@ -86,6 +89,9 @@ class OrchestratorService {
     this.#toolRegistry = new ToolRegistry(this.#services);
     registerBuiltinTools(this.#toolRegistry);
 
+    // Initialize skill registry
+    this.#skillRegistry = new SkillRegistry();
+
     // Initialize memory service and configure with LLM credentials
     this.#memoryService = this.#services.get(MemoryService);
     this.#memoryService.configure({
@@ -112,10 +118,20 @@ class OrchestratorService {
   }
 
   /**
+   * Gets the skill registry.
+   */
+  get skillRegistry(): SkillRegistry {
+    if (!this.#skillRegistry) {
+      throw new OrchestratorNotConfiguredError();
+    }
+    return this.#skillRegistry;
+  }
+
+  /**
    * Ensures the orchestrator is configured.
    */
   #ensureConfigured = (): void => {
-    if (!this.#config || !this.#llm || !this.#checkpointer || !this.#toolRegistry) {
+    if (!this.#config || !this.#llm || !this.#checkpointer || !this.#toolRegistry || !this.#skillRegistry) {
       throw new OrchestratorNotConfiguredError();
     }
   };
@@ -208,7 +224,7 @@ class OrchestratorService {
       // These are guaranteed non-null by #ensureConfigured() above
       const tools = toLangChainTools(this.#toolRegistry as ToolRegistry, toolContext);
 
-      // Create and compile graph with tool registry for risk gate and memory service
+      // Create and compile graph with tool registry for risk gate, memory service, and skill registry
       const graph = createOrchestratorGraph(
         this.#llm as ChatOpenAI,
         systemPrompt,
@@ -216,6 +232,8 @@ class OrchestratorService {
         this.#toolRegistry as ToolRegistry,
         undefined, // approvalLevels - use defaults
         this.#memoryService ?? undefined,
+        this.#skillRegistry ?? undefined,
+        this.#services,
       );
       const compiledGraph = graph.compile({
         checkpointer: this.#checkpointer as DatabaseCheckpointer,
@@ -287,6 +305,30 @@ class OrchestratorService {
 
         yield { type: 'interrupt', interrupt };
         return;
+      }
+
+      // Check if graph halted for a skill activation interrupt
+      if (result.interruptRequired && result.pendingSkillActivation) {
+        const skill = this.#skillRegistry?.get(result.pendingSkillActivation.skillId);
+        if (skill) {
+          const interrupt = await this.#interruptService.create({
+            conversationId,
+            type: 'skill_activation',
+            prompt: formatSkillActivationPrompt(skill),
+            skillActivation: {
+              skillId: skill.id,
+              skillName: skill.name,
+              activationRisk: skill.activationRisk,
+              activationReason: skill.activationReason,
+              activationParams: result.pendingSkillActivation.activationParams,
+              toolsSummary: skill.tools.map((t) => `${t.name}: ${t.description.split('\n')[0]}`).join('\n'),
+            },
+            checkpointId: conversationId,
+          });
+
+          yield { type: 'interrupt', interrupt };
+          return;
+        }
       }
 
       // Extract the response from the last message
@@ -372,6 +414,17 @@ class OrchestratorService {
       return;
     }
 
+    // Handle skill activation interrupts
+    if (interrupt.type === 'skill_activation') {
+      if (response.approved) {
+        yield* this.#resumeAfterSkillActivation(resolvedInterrupt);
+      } else {
+        // Skill activation was denied - inform the agent
+        yield* this.#handleDeniedSkillActivation(resolvedInterrupt);
+      }
+      return;
+    }
+
     if (response.approved) {
       // Resume execution with the approved tool
       yield* this.#resumeAfterApproval(resolvedInterrupt);
@@ -387,8 +440,8 @@ class OrchestratorService {
   #parseInterruptResponse = (interrupt: Interrupt, message: string): InterruptResponse => {
     const trimmed = message.trim().toLowerCase();
 
-    // Tool approval responses
-    if (interrupt.type === 'tool_approval') {
+    // Tool approval and skill activation responses
+    if (interrupt.type === 'tool_approval' || interrupt.type === 'skill_activation') {
       if (trimmed === 'y' || trimmed === 'yes' || trimmed === 'approve') {
         return { approved: true };
       }
@@ -451,6 +504,8 @@ class OrchestratorService {
         this.#toolRegistry as ToolRegistry,
         undefined, // approvalLevels - use defaults
         this.#memoryService ?? undefined,
+        this.#skillRegistry ?? undefined,
+        this.#services,
       );
       const compiledGraph = graph.compile({
         checkpointer: this.#checkpointer as DatabaseCheckpointer,
@@ -600,6 +655,8 @@ class OrchestratorService {
         this.#toolRegistry as ToolRegistry,
         undefined,
         this.#memoryService ?? undefined,
+        this.#skillRegistry ?? undefined,
+        this.#services,
       );
       const compiledGraph = graph.compile({
         checkpointer: this.#checkpointer as DatabaseCheckpointer,
@@ -730,6 +787,216 @@ class OrchestratorService {
   };
 
   /**
+   * Resumes execution after skill activation approval.
+   */
+  #resumeAfterSkillActivation = async function* (
+    this: OrchestratorService,
+    interrupt: Interrupt,
+  ): AsyncGenerator<ChatChunk> {
+    this.#ensureConfigured();
+
+    const conversationId = interrupt.conversationId;
+    const skillInfo = interrupt.skillActivation;
+
+    if (!skillInfo) {
+      yield { type: 'error', error: 'Skill activation info missing from interrupt' };
+      return;
+    }
+
+    try {
+      // Build system prompt with context
+      const personality = this.#services.get(PersonalityService);
+      const contextBuilder = this.#services.get(ContextBuilderService);
+      const context = await contextBuilder.buildContext();
+      const systemPrompt = await personality.buildSystemPrompt(context);
+
+      // Get tools as LangChain tools
+      const toolContext = {
+        userId: 'default',
+        conversationId,
+        services: this.#services,
+      };
+      const tools = toLangChainTools(this.#toolRegistry as ToolRegistry, toolContext);
+
+      // Create and compile graph
+      const graph = createOrchestratorGraph(
+        this.#llm as ChatOpenAI,
+        systemPrompt,
+        tools,
+        this.#toolRegistry as ToolRegistry,
+        undefined,
+        this.#memoryService ?? undefined,
+        this.#skillRegistry ?? undefined,
+        this.#services,
+      );
+      const compiledGraph = graph.compile({
+        checkpointer: this.#checkpointer as DatabaseCheckpointer,
+      });
+
+      // Get the current checkpoint state
+      const currentState = await compiledGraph.getState({
+        configurable: { thread_id: conversationId },
+      });
+
+      // Get existing messages and state from checkpoint
+      const checkpointMessages = currentState.values?.messages ?? [];
+      const existingActiveSkills = currentState.values?.activeSkills ?? [];
+
+      // Use handleSkillActivationApproval to properly activate the skill
+      const skillActivationUpdate = await handleSkillActivationApproval(
+        {
+          ...currentState.values,
+          pendingSkillActivation: {
+            skillId: skillInfo.skillId,
+            activationParams: skillInfo.activationParams,
+          },
+        },
+        this.#skillRegistry as SkillRegistry,
+        this.#services,
+      );
+
+      // Resume with the activated skill
+      const result = await compiledGraph.invoke(
+        {
+          conversationId,
+          messages: checkpointMessages,
+          activeSkills: skillActivationUpdate.activeSkills ?? existingActiveSkills,
+          pendingSkillActivation: null,
+          interruptRequired: false,
+        },
+        {
+          configurable: { thread_id: conversationId },
+          recursionLimit: 150,
+        },
+      );
+
+      // Check for additional interrupts
+      if (result.turnLimitReached) {
+        const newInterrupt = await this.#interruptService.create({
+          conversationId,
+          type: 'turn_limit',
+          prompt: `The conversation has reached ${result.turnCount} turns. Would you like to continue?`,
+          checkpointId: conversationId,
+        });
+
+        yield { type: 'interrupt', interrupt: newInterrupt };
+        return;
+      }
+
+      if (result.interruptRequired && result.pendingToolCall) {
+        const newInterrupt = await this.#interruptService.create({
+          conversationId,
+          type: 'tool_approval',
+          prompt: formatApprovalPrompt(result.pendingToolCall),
+          toolCall: formatToolCallInfo(result.pendingToolCall),
+          checkpointId: conversationId,
+        });
+
+        yield { type: 'interrupt', interrupt: newInterrupt };
+        return;
+      }
+
+      if (result.interruptRequired && result.pendingSkillActivation) {
+        const skill = this.#skillRegistry?.get(result.pendingSkillActivation.skillId);
+        if (skill) {
+          const newInterrupt = await this.#interruptService.create({
+            conversationId,
+            type: 'skill_activation',
+            prompt: formatSkillActivationPrompt(skill),
+            skillActivation: {
+              skillId: skill.id,
+              skillName: skill.name,
+              activationRisk: skill.activationRisk,
+              activationReason: skill.activationReason,
+              activationParams: result.pendingSkillActivation.activationParams,
+              toolsSummary: skill.tools.map((t) => `${t.name}: ${t.description.split('\n')[0]}`).join('\n'),
+            },
+            checkpointId: conversationId,
+          });
+
+          yield { type: 'interrupt', interrupt: newInterrupt };
+          return;
+        }
+      }
+
+      // Extract response
+      const lastMessage = result.messages[result.messages.length - 1];
+      let responseContent = '';
+
+      if (lastMessage && 'content' in lastMessage) {
+        responseContent =
+          typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
+      }
+
+      // Collect tool_calls from new messages
+      const newMessages = result.messages.slice(checkpointMessages.length);
+      const allToolCalls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
+      for (const msg of newMessages) {
+        if ('tool_calls' in msg) {
+          const aiMsg = msg as AIMessage;
+          if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
+            allToolCalls.push(...aiMsg.tool_calls);
+          }
+        }
+      }
+      const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
+
+      if (responseContent) {
+        yield { type: 'token', content: responseContent };
+      }
+
+      // Store assistant message
+      const tokenUsage =
+        lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;
+
+      await addMessage(this.#db(), conversationId, {
+        role: 'assistant',
+        content: responseContent,
+        toolCalls,
+        inputTokens: tokenUsage?.input_tokens,
+        outputTokens: tokenUsage?.output_tokens,
+      });
+
+      yield {
+        type: 'done',
+        inputTokens: tokenUsage?.input_tokens,
+        outputTokens: tokenUsage?.output_tokens,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      yield { type: 'error', error: errorMessage };
+    }
+  };
+
+  /**
+   * Handles a denied skill activation by informing the agent.
+   */
+  #handleDeniedSkillActivation = async function* (
+    this: OrchestratorService,
+    interrupt: Interrupt,
+  ): AsyncGenerator<ChatChunk> {
+    this.#ensureConfigured();
+
+    const conversationId = interrupt.conversationId;
+    const skillName = interrupt.skillActivation?.skillName ?? 'the skill';
+    const freeformResponse = interrupt.response?.freeformResponse;
+
+    // Create a message explaining the denial
+    const denialMessage = freeformResponse
+      ? `The user denied the activation of ${skillName} skill and said: "${freeformResponse}"`
+      : `The user denied the activation of ${skillName} skill. Please try a different approach.`;
+
+    // Store the denial as a user message
+    await addMessage(this.#db(), conversationId, {
+      role: 'user',
+      content: denialMessage,
+    });
+
+    // Continue chat with the denial context
+    yield* this.chat(conversationId, '');
+  };
+
+  /**
    * Responds to a pending interrupt directly.
    * This is an alternative to the chat method for programmatic responses.
    */
@@ -803,6 +1070,8 @@ class OrchestratorService {
         this.#toolRegistry as ToolRegistry,
         undefined,
         this.#memoryService ?? undefined,
+        this.#skillRegistry ?? undefined,
+        this.#services,
       );
       const compiledGraph = graph.compile({
         checkpointer: this.#checkpointer as DatabaseCheckpointer,

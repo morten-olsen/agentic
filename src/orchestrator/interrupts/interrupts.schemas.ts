@@ -1,11 +1,19 @@
 import { z } from 'zod';
 
 import { riskLevelSchema } from '../../tools/tools.schemas.ts';
+import { activationRiskSchema } from '../../skills/skills.schemas.ts';
 
 /**
  * Types of interrupts.
  */
-const interruptTypeSchema = z.enum(['tool_approval', 'question', 'confirmation', 'error_recovery', 'turn_limit']);
+const interruptTypeSchema = z.enum([
+  'tool_approval',
+  'question',
+  'confirmation',
+  'error_recovery',
+  'turn_limit',
+  'skill_activation',
+]);
 
 type InterruptType = z.infer<typeof interruptTypeSchema>;
 
@@ -33,6 +41,20 @@ const toolCallInfoSchema = z.object({
 });
 
 type ToolCallInfo = z.infer<typeof toolCallInfoSchema>;
+
+/**
+ * Information about a skill activation that requires approval.
+ */
+const skillActivationInfoSchema = z.object({
+  skillId: z.string(),
+  skillName: z.string(),
+  activationRisk: activationRiskSchema,
+  activationReason: z.string(),
+  activationParams: z.unknown().optional(),
+  toolsSummary: z.string(),
+});
+
+type SkillActivationInfo = z.infer<typeof skillActivationInfoSchema>;
 
 /**
  * Interrupt status.
@@ -64,6 +86,7 @@ const interruptSchema = z.object({
   options: z.array(interruptOptionSchema).optional(),
   allowFreeform: z.boolean(),
   toolCall: toolCallInfoSchema.optional(),
+  skillActivation: skillActivationInfoSchema.optional(),
   status: interruptStatusSchema,
   checkpointId: z.string().optional(),
   createdAt: z.string(),
@@ -85,6 +108,7 @@ const createInterruptInputSchema = z.object({
   options: z.array(interruptOptionSchema).optional(),
   allowFreeform: z.boolean().optional().default(true),
   toolCall: toolCallInfoSchema.optional(),
+  skillActivation: skillActivationInfoSchema.optional(),
   checkpointId: z.string().optional(),
   expiresAt: z.string().optional(),
 });
@@ -103,6 +127,7 @@ const interruptRowSchema = z.object({
   options: z.string().nullable(), // JSON
   allow_freeform: z.number(), // SQLite stores boolean as 0/1
   tool_call: z.string().nullable(), // JSON
+  skill_activation: z.string().nullable(), // JSON
   status: z.string(),
   checkpoint_id: z.string().nullable(),
   created_at: z.string(),
@@ -117,6 +142,7 @@ export type {
   InterruptType,
   InterruptOption,
   ToolCallInfo,
+  SkillActivationInfo,
   InterruptStatus,
   InterruptResponse,
   Interrupt,
@@ -128,6 +154,7 @@ export {
   interruptTypeSchema,
   interruptOptionSchema,
   toolCallInfoSchema,
+  skillActivationInfoSchema,
   interruptStatusSchema,
   interruptResponseSchema,
   interruptSchema,

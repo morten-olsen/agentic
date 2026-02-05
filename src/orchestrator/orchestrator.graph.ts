@@ -6,6 +6,8 @@ import { AIMessage } from '@langchain/core/messages';
 
 import type { ToolRegistry, RiskLevel } from '../tools/tools.ts';
 import type { MemoryService } from '../memory/memory.ts';
+import type { SkillRegistry } from '../skills/skills.ts';
+import { createSkillActivationNode, isSkillActivationTool, isDeactivateSkillTool } from '../skills/skills.node.ts';
 
 import { OrchestratorAnnotation } from './orchestrator.state.ts';
 import type { OrchestratorState } from './orchestrator.state.ts';
@@ -123,18 +125,49 @@ const routeAfterRouter = (state: OrchestratorState): 'risk_gate' | 'end' => {
 /**
  * Determines the next step after risk gate evaluation.
  */
-const routeAfterRiskGate = (state: OrchestratorState): 'tools' | 'interrupt' | 'router' => {
-  // If an interrupt is required, halt and wait for approval
-  if (state.interruptRequired) {
+const routeAfterRiskGate = (state: OrchestratorState): 'skill_activation' | 'tools' | 'interrupt' | 'router' => {
+  // If an interrupt is required for tool approval, halt and wait for approval
+  if (state.interruptRequired && state.pendingToolCall) {
     return 'interrupt';
   }
 
-  // If we have approved tool calls, execute them
+  // If we have approved tool calls, check if any are skill-related
   if (state.approvedToolCalls && state.approvedToolCalls.length > 0) {
+    // Check if any approved tool is a skill activation/deactivation
+    const hasSkillTools = state.approvedToolCalls.some(
+      (tc) => isSkillActivationTool(tc.name) || isDeactivateSkillTool(tc.name),
+    );
+    if (hasSkillTools) {
+      return 'skill_activation';
+    }
     return 'tools';
   }
 
   // No tool calls to process (shouldn't normally happen)
+  return 'router';
+};
+
+/**
+ * Determines the next step after skill activation evaluation.
+ */
+const routeAfterSkillActivation = (state: OrchestratorState): 'tools' | 'interrupt' | 'router' => {
+  // If an interrupt is required for skill activation, halt and wait for approval
+  if (state.interruptRequired && state.pendingSkillActivation) {
+    return 'interrupt';
+  }
+
+  // If we have approved tool calls (non-skill tools), execute them
+  if (state.approvedToolCalls && state.approvedToolCalls.length > 0) {
+    // Filter out skill tools that were already handled
+    const nonSkillTools = state.approvedToolCalls.filter(
+      (tc) => !isSkillActivationTool(tc.name) && !isDeactivateSkillTool(tc.name),
+    );
+    if (nonSkillTools.length > 0) {
+      return 'tools';
+    }
+  }
+
+  // Skills were handled, continue to router for next action
   return 'router';
 };
 
@@ -216,9 +249,9 @@ const createFilteredToolNode = (tools: DynamicStructuredTool[]) => {
  * Creates the LangGraph state machine for the orchestrator.
  *
  * Graph flow:
- * START → memory_retriever → turn_counter → [turn_limit_interrupt | router] → risk_gate → [interrupt | tools]
- *                                                    ↑                                           |
- *                                                    |___________________________________________↓
+ * START → memory_retriever → turn_counter → [turn_limit_interrupt | router] → risk_gate → skill_activation → [interrupt | tools]
+ *                                                    ↑                                                                    |
+ *                                                    |____________________________________________________________________↓
  */
 const createOrchestratorGraph = (
   llm: ChatOpenAI,
@@ -227,6 +260,8 @@ const createOrchestratorGraph = (
   toolRegistry?: ToolRegistry,
   approvalLevels?: RiskLevel[],
   memoryService?: MemoryService,
+  skillRegistry?: SkillRegistry,
+  services?: unknown,
 ) => {
   // Create the filtered tool node
   const toolNode = createFilteredToolNode(tools);
@@ -245,12 +280,17 @@ const createOrchestratorGraph = (
   // Create the memory retriever node (with optional MemoryService)
   const memoryNode = createMemoryRetrieverNode(memoryService);
 
+  // Create the skill activation node (if skill registry provided)
+  const skillActivationNode =
+    skillRegistry && services ? createSkillActivationNode(skillRegistry, services) : async () => ({});
+
   // Build the graph
   const graph = new StateGraph(OrchestratorAnnotation)
     .addNode('memory_retriever', memoryNode)
     .addNode('turn_counter', turnCounterNode)
     .addNode('router', routerNode)
     .addNode('risk_gate', riskGateNode)
+    .addNode('skill_activation', skillActivationNode)
     .addNode('tools', toolNode)
     .addNode('interrupt', interruptNode)
     .addNode('turn_limit_interrupt', turnLimitInterruptNode)
@@ -265,6 +305,12 @@ const createOrchestratorGraph = (
       end: END,
     })
     .addConditionalEdges('risk_gate', routeAfterRiskGate, {
+      skill_activation: 'skill_activation',
+      tools: 'tools',
+      interrupt: 'interrupt',
+      router: 'router',
+    })
+    .addConditionalEdges('skill_activation', routeAfterSkillActivation, {
       tools: 'tools',
       interrupt: 'interrupt',
       router: 'router',
@@ -284,6 +330,7 @@ export {
   routeAfterTurnCounter,
   routeAfterRouter,
   routeAfterRiskGate,
+  routeAfterSkillActivation,
   createFilteredToolNode,
   interruptNode,
   turnLimitInterruptNode,
