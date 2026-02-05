@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
+import { getConfig } from '../../config/config.ts';
 import type { ToolDefinition } from '../../tools/tools.types.ts';
 import { ExternalServiceRegistry } from '../external.ts';
 
 import type { HomeAssistantClient } from './homeassistant.ts';
+import type { HaCalendarEvent } from './homeassistant.schemas.ts';
 
 /**
  * Input schema for ha_call_service tool.
@@ -130,5 +132,175 @@ Examples:
   },
 };
 
-export type { HaCallServiceInput, HaCallServiceOutput };
-export { haCallServiceTool, haCallServiceInputSchema, haCallServiceOutputSchema };
+/**
+ * Input schema for ha_get_calendar tool.
+ */
+const haGetCalendarInputSchema = z.object({
+  entityId: z
+    .string()
+    .optional()
+    .describe(
+      'Calendar entity ID to fetch (e.g., "calendar.family"). If omitted, fetches from all configured calendars.',
+    ),
+  start: z.string().optional().describe('Start datetime (ISO format). Defaults to start of today.'),
+  end: z.string().optional().describe('End datetime (ISO format). Defaults to end of today.'),
+});
+
+type HaGetCalendarInput = z.infer<typeof haGetCalendarInputSchema>;
+
+/**
+ * Output schema for ha_get_calendar tool.
+ */
+const haGetCalendarOutputSchema = z.object({
+  events: z.array(
+    z.object({
+      calendar: z.string(),
+      start: z.string(),
+      end: z.string(),
+      summary: z.string(),
+      description: z.string().optional(),
+      location: z.string().optional(),
+      allDay: z.boolean(),
+    }),
+  ),
+  message: z.string(),
+});
+
+type HaGetCalendarOutput = z.infer<typeof haGetCalendarOutputSchema>;
+
+/**
+ * Helper to get start of day.
+ */
+const startOfDay = (date: Date): Date => {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  return result;
+};
+
+/**
+ * Helper to get end of day.
+ */
+const endOfDay = (date: Date): Date => {
+  const result = new Date(date);
+  result.setHours(23, 59, 59, 999);
+  return result;
+};
+
+/**
+ * ha_get_calendar tool - Fetch calendar events from Home Assistant calendars.
+ */
+const haGetCalendarTool: ToolDefinition<HaGetCalendarInput, HaGetCalendarOutput> = {
+  id: 'ha_get_calendar',
+  name: 'Get Home Assistant Calendar',
+  description: `Fetch calendar events from Home Assistant.
+
+Use this tool to get events from HA-connected calendars (Google Calendar, local calendars, etc.).
+
+Examples:
+- Get today's events: no parameters needed
+- Get specific calendar: entityId="calendar.family"
+- Get events for a date range: start="2026-02-05T00:00:00Z", end="2026-02-07T23:59:59Z"`,
+
+  category: 'external',
+
+  requiredServices: ['homeassistant'],
+
+  inputSchema: haGetCalendarInputSchema,
+  outputSchema: haGetCalendarOutputSchema,
+
+  risk: {
+    level: 'low',
+    reason: 'Read-only access to calendar data',
+    potentialImpact: 'None - only reads calendar events',
+    reversible: true,
+    categories: [],
+  },
+
+  tags: ['homeassistant', 'calendar', 'scheduling'],
+
+  examples: [
+    {
+      description: "Get today's events from all configured calendars",
+      input: {},
+    },
+    {
+      description: 'Get events from a specific calendar',
+      input: {
+        entityId: 'calendar.family',
+      },
+    },
+    {
+      description: 'Get events for a specific date range',
+      input: {
+        start: '2026-02-05T00:00:00Z',
+        end: '2026-02-07T23:59:59Z',
+      },
+    },
+  ],
+
+  execute: async (input, context): Promise<HaGetCalendarOutput> => {
+    const registry = context.services.get(ExternalServiceRegistry);
+    const client = await registry.getClient<HomeAssistantClient>('homeassistant');
+    const config = getConfig();
+
+    // Determine date range
+    const now = new Date();
+    const start = input.start ? new Date(input.start) : startOfDay(now);
+    const end = input.end ? new Date(input.end) : endOfDay(now);
+
+    // Determine which calendars to fetch
+    const calendars = input.entityId ? [input.entityId] : config.homeassistant.calendarEntities;
+
+    if (calendars.length === 0) {
+      return {
+        events: [],
+        message: 'No calendar entities configured. Set GLADOS_HOMEASSISTANT_CALENDARS or specify entityId.',
+      };
+    }
+
+    // Fetch from all calendars in parallel
+    const results = await Promise.all(
+      calendars.map(async (entityId) => {
+        try {
+          const events = await client.getCalendarEvents(entityId, start, end);
+          return events.map((event: HaCalendarEvent) => ({
+            calendar: entityId,
+            ...event,
+            allDay: !event.start.includes('T'),
+          }));
+        } catch {
+          // Skip calendars that fail (might not exist)
+          return [];
+        }
+      }),
+    );
+
+    const allEvents = results
+      .flat()
+      .sort((a, b) => a.start.localeCompare(b.start))
+      .map((event) => ({
+        calendar: event.calendar,
+        start: event.start,
+        end: event.end,
+        summary: event.summary,
+        description: event.description,
+        location: event.location,
+        allDay: event.allDay,
+      }));
+
+    return {
+      events: allEvents,
+      message: `Found ${allEvents.length} event(s) from ${calendars.length} calendar(s)`,
+    };
+  },
+};
+
+export type { HaCallServiceInput, HaCallServiceOutput, HaGetCalendarInput, HaGetCalendarOutput };
+export {
+  haCallServiceTool,
+  haCallServiceInputSchema,
+  haCallServiceOutputSchema,
+  haGetCalendarTool,
+  haGetCalendarInputSchema,
+  haGetCalendarOutputSchema,
+};

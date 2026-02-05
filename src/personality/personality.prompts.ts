@@ -156,8 +156,30 @@ const generateContextInstructions = (context: AgentContext): string => {
   }
 
   // Location awareness
-  if (context.location?.current) {
+  if (context.location?.coordinates) {
+    // GPS coordinates from Home Assistant
+    const { latitude, longitude, accuracy } = context.location.coordinates;
+    instructions.push(`User location (GPS): ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (accuracy: ${accuracy}m)`);
+
+    // Location status
+    const status = context.location.atHome ? 'at home' : context.location.atWork ? 'at work' : 'away';
+    instructions.push(`Location status: ${status}`);
+
+    // Staleness warning if location data is old
+    if (context.location.lastLocationChange) {
+      const lastChange = new Date(context.location.lastLocationChange);
+      const ageMinutes = Math.floor((Date.now() - lastChange.getTime()) / 60000);
+      if (ageMinutes > 60) {
+        instructions.push(`Warning: Location data is ${Math.floor(ageMinutes / 60)} hours old`);
+      }
+    }
+  } else if (context.location?.current) {
+    // Fallback to schedule-inferred location
     instructions.push(`User is at: ${context.location.current.name} (${context.location.current.type})`);
+  } else if (context.location) {
+    // No GPS and no inferred location, but we have status
+    const status = context.location.atHome ? 'at home' : context.location.atWork ? 'at work' : 'location unknown';
+    instructions.push(`Location status: ${status}`);
   }
 
   // Calendar awareness

@@ -2,7 +2,7 @@ import type { ToolRegistry, RegisteredTool } from '../tools/tools.ts';
 import type { SkillDefinition } from '../skills/skills.schemas.ts';
 
 import { ExternalServiceRegistry } from './external.ts';
-import { homeassistantDefinition, haCallServiceTool } from './homeassistant/index.ts';
+import { homeassistantDefinition, haCallServiceTool, haGetCalendarTool } from './homeassistant/index.ts';
 
 /**
  * Registers all external service definitions with the registry.
@@ -18,6 +18,7 @@ const registerExternalServices = (registry: ExternalServiceRegistry): void => {
  */
 const registerExternalServiceTools = (toolRegistry: ToolRegistry): void => {
   toolRegistry.register(haCallServiceTool);
+  toolRegistry.register(haGetCalendarTool);
 };
 
 /**

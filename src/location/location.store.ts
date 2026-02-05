@@ -9,6 +9,9 @@ import type {
   LocationSource,
   LocationConfidence,
   Address,
+  CoordinateHistoryEntry,
+  RecordCoordinateInput,
+  CoordinateProvider,
 } from './location.schemas.ts';
 
 // ============================================================================
@@ -37,6 +40,21 @@ type LocationHistoryRow = {
   recorded_at: string;
 };
 
+type CoordinateHistoryRow = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  altitude: number | null;
+  speed: number | null;
+  bearing: number | null;
+  provider: string;
+  source: string | null;
+  zone: string | null;
+  recorded_at: string;
+  created_at: string;
+};
+
 // ============================================================================
 // Converters
 // ============================================================================
@@ -55,6 +73,21 @@ const locationFromRow = (row: LocationRow): Location => ({
   tags: row.tags ? (JSON.parse(row.tags) as string[]) : [],
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+});
+
+const coordinateHistoryFromRow = (row: CoordinateHistoryRow): CoordinateHistoryEntry => ({
+  id: row.id,
+  latitude: row.latitude,
+  longitude: row.longitude,
+  accuracy: row.accuracy,
+  altitude: row.altitude,
+  speed: row.speed,
+  bearing: row.bearing,
+  provider: row.provider as CoordinateProvider,
+  source: row.source,
+  zone: row.zone,
+  recordedAt: row.recorded_at,
+  createdAt: row.created_at,
 });
 
 // ============================================================================
@@ -229,6 +262,85 @@ const getLocationHistory = async (knex: Knex, limit = 10): Promise<CurrentLocati
   return results;
 };
 
+// ============================================================================
+// Coordinate History Operations (GPS tracking)
+// ============================================================================
+
+/**
+ * Records a coordinate entry to the history.
+ * Called when GPS location is received from any provider.
+ */
+const recordCoordinate = async (knex: Knex, input: RecordCoordinateInput): Promise<CoordinateHistoryEntry> => {
+  const timestamp = now();
+  const id = crypto.randomUUID();
+
+  const row: CoordinateHistoryRow = {
+    id,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    accuracy: input.accuracy ?? null,
+    altitude: input.altitude ?? null,
+    speed: input.speed ?? null,
+    bearing: input.bearing ?? null,
+    provider: input.provider,
+    source: input.source ?? null,
+    zone: input.zone ?? null,
+    recorded_at: input.recordedAt ?? timestamp,
+    created_at: timestamp,
+  };
+
+  await knex('coordinate_history').insert(row);
+
+  return coordinateHistoryFromRow(row);
+};
+
+/**
+ * Gets coordinate history entries, most recent first.
+ */
+const getCoordinateHistory = async (
+  knex: Knex,
+  options: {
+    limit?: number;
+    since?: Date;
+    until?: Date;
+    provider?: CoordinateProvider;
+  } = {},
+): Promise<CoordinateHistoryEntry[]> => {
+  const { limit = 100, since, until, provider } = options;
+
+  let query = knex<CoordinateHistoryRow>('coordinate_history').orderBy('recorded_at', 'desc').limit(limit);
+
+  if (since) {
+    query = query.where('recorded_at', '>=', since.toISOString());
+  }
+  if (until) {
+    query = query.where('recorded_at', '<=', until.toISOString());
+  }
+  if (provider) {
+    query = query.where('provider', provider);
+  }
+
+  const rows = await query;
+  return rows.map(coordinateHistoryFromRow);
+};
+
+/**
+ * Gets the most recent coordinate entry.
+ */
+const getLatestCoordinate = async (knex: Knex): Promise<CoordinateHistoryEntry | null> => {
+  const row = await knex<CoordinateHistoryRow>('coordinate_history').orderBy('recorded_at', 'desc').first();
+
+  return row ? coordinateHistoryFromRow(row) : null;
+};
+
+/**
+ * Deletes coordinate history older than the specified date.
+ * Useful for cleanup/retention policies.
+ */
+const deleteCoordinateHistoryBefore = async (knex: Knex, before: Date): Promise<number> => {
+  return knex('coordinate_history').where('recorded_at', '<', before.toISOString()).delete();
+};
+
 export {
   // Locations
   getLocation,
@@ -243,4 +355,9 @@ export {
   getCurrentLocation,
   setCurrentLocation,
   getLocationHistory,
+  // Coordinate History (GPS tracking)
+  recordCoordinate,
+  getCoordinateHistory,
+  getLatestCoordinate,
+  deleteCoordinateHistoryBefore,
 };
