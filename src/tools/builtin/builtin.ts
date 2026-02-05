@@ -2,6 +2,7 @@ import type { ToolRegistry } from '../tools.ts';
 
 import { echoTool } from './echo.ts';
 import { askUserTool } from './ask-user.ts';
+import { webFetchTool } from './web-fetch.ts';
 import { registerUserModelTools } from './user-model.ts';
 import { registerContactsTools } from './contacts.ts';
 import { registerCalendarTools } from './calendar.ts';
@@ -21,6 +22,7 @@ const registerBuiltinTools = (registry: ToolRegistry): void => {
   // Core tools
   registry.register(echoTool);
   registry.register(askUserTool);
+  registry.register(webFetchTool);
 
   // Service tools
   registerUserModelTools(registry);
@@ -42,6 +44,9 @@ export type { EchoInput, EchoOutput } from './echo.ts';
 
 export { askUserTool } from './ask-user.ts';
 export type { AskUserInput, AskUserOutput } from './ask-user.ts';
+
+export { webFetchTool } from './web-fetch.ts';
+export type { WebFetchInput, WebFetchOutput, WebFetchRawOutput, WebFetchArticleOutput } from './web-fetch.ts';
 
 // Re-export service tool registrations
 export { registerUserModelTools } from './user-model.ts';
