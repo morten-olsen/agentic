@@ -21,12 +21,16 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 - **Day Planner Spec**: `spec/004-day-planner.md` - Daily planning sessions and context
 - **Trigger Continuation Spec**: `spec/005-trigger-continuation.md` - Stateful triggers through continuation notes
 - **Skills Spec**: `spec/006-skills.md` - Domain-specific capabilities with gated activation
+- **Artifacts Spec**: `spec/008-artifacts.md` - Server-side storage for large data with summaries
+- **External Services Spec**: `spec/009-external-services.md` - Third-party service integration
 - **Architecture**: `docs/agent-architecture.md` - Conceptual guide (how the agent thinks)
 - **External Clients**: `docs/external-clients.md` - Guide for building external client integrations
 - **Coding Standards**: `docs/coding-standards.md` - TypeScript conventions
 - **Testing Strategy**: `docs/testing-strategy.md` - Testing patterns and infrastructure
 - **Debugging**: `docs/debugging.md` - Conversation-level debugging tools and techniques
 - **Skills**: `docs/skills.md` - Skills system usage and development guide
+- **Artifacts**: `docs/artifacts.md` - Server-side storage for large tool responses
+- **External Services**: `docs/external-services.md` - Integrating third-party services
 
 ## Tech Stack
 
@@ -227,6 +231,56 @@ The skills system provides domain-specific capabilities with gated activation:
 - **Interrupt Flow**: High/critical risk skills require user approval before activation
 
 **Agent tools**: `activate_<skillId>`, `deactivate_skill`, `list_skills`
+
+### External Services (Phase 9)
+
+```
+src/external/
+├── external.ts                 # Main ExternalServiceRegistry
+├── external.schemas.ts         # Service definition types
+├── external.errors.ts          # Custom errors
+├── external.tools.ts           # Registration and filtering utilities
+├── external.test.ts            # Unit tests
+└── homeassistant/
+    ├── homeassistant.ts        # Service definition
+    ├── homeassistant.tools.ts  # ha_call_service tool
+    └── index.ts                # Barrel export
+```
+
+External services provide integration with third-party services:
+
+- **Environment Configuration**: Services configured via environment variables (e.g., `GLADOS_HOMEASSISTANT_URL`)
+- **Service Filtering**: Tools/skills with `requiredServices` are only available when those services are configured
+- **Lazy Client Initialization**: Service clients created on first use and cached
+- **Home Assistant**: Smart home control via `ha_call_service` tool
+
+**Configuration**:
+```bash
+GLADOS_HOMEASSISTANT_URL=http://homeassistant.local:8123
+GLADOS_HOMEASSISTANT_TOKEN=<long-lived-access-token>
+```
+
+### Artifacts System
+
+```
+src/artifacts/
+├── artifacts.ts           # Main ArtifactStore class
+├── artifacts.schemas.ts   # Artifact, ArtifactMimeType types
+├── artifacts.store.ts     # SQLite persistence
+├── artifacts.tools.ts     # get_artifact, list_artifacts tools
+├── artifacts.errors.ts    # Custom errors
+└── artifacts.test.ts      # Unit tests
+```
+
+The artifacts system provides server-side storage for large tool responses:
+
+- **Context Efficiency**: Tools return ~2KB summaries instead of full responses
+- **Full Data Access**: Artifacts can be fetched by clients or queried by exploration tools
+- **TTL-Based Expiration**: Automatic cleanup prevents storage bloat
+- **Conversation-Scoped**: Artifacts deleted when conversation ends
+- **Path Extraction**: Query specific sections of JSON artifacts
+
+**Agent tools**: `get_artifact`, `list_artifacts`
 
 ### Future Modules (see spec/future-phases.md)
 

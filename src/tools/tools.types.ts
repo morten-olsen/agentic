@@ -33,6 +33,8 @@ type ToolDefinition<TInput = unknown, TOutput = unknown, TRawInput = TInput> = {
   tags: string[];
   /** Usage examples - uses raw input type before transforms */
   examples: { input: TRawInput; description: string }[];
+  /** External services required for this tool to be available */
+  requiredServices?: string[];
 };
 
 /**

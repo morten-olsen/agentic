@@ -169,6 +169,22 @@ const configSchema = convict({
     },
   },
 
+  homeassistant: {
+    url: {
+      doc: 'Home Assistant URL',
+      format: String,
+      default: '',
+      env: 'GLADOS_HOMEASSISTANT_URL',
+    },
+    token: {
+      doc: 'Home Assistant long-lived access token',
+      format: String,
+      default: '',
+      env: 'GLADOS_HOMEASSISTANT_TOKEN',
+      sensitive: true,
+    },
+  },
+
   triggers: {
     enabled: {
       doc: 'Enable trigger system',
@@ -243,6 +259,10 @@ type Config = {
     quietHoursStart: string;
     quietHoursEnd: string;
     maxInterruptionsPerHour: number;
+  };
+  homeassistant: {
+    url: string;
+    token: string;
   };
   triggers: {
     enabled: boolean;
@@ -390,6 +410,14 @@ const isTelegramConfigured = (): boolean => {
 };
 
 /**
+ * Checks if Home Assistant is configured.
+ */
+const isHomeAssistantConfigured = (): boolean => {
+  const config = getConfig();
+  return config.homeassistant.url.length > 0 && config.homeassistant.token.length > 0;
+};
+
+/**
  * Gets a formatted string of configuration for display (hides sensitive values).
  */
 const getConfigDisplay = (): string => {
@@ -417,6 +445,9 @@ Configuration:
   Telegram:
     Bot Token: ${config.telegram.botToken ? '***configured***' : '(not set)'}
     Owner ID: ${config.telegram.ownerId || '(not set)'}
+  Home Assistant:
+    URL: ${config.homeassistant.url || '(not set)'}
+    Token: ${config.homeassistant.token ? '***configured***' : '(not set)'}
 
 Config files loaded:
 ${loaded.length > 0 ? loaded.map((f) => `  - ${f}`).join('\n') : '  (none)'}
@@ -432,6 +463,7 @@ export {
   getAllConfigPaths,
   isLLMConfigured,
   isTelegramConfigured,
+  isHomeAssistantConfigured,
   getConfigDisplay,
   getGlobalConfigDir,
   getUserConfigDir,

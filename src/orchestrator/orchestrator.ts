@@ -7,12 +7,18 @@ import { DatabaseService } from '../database/database.ts';
 import { PersonalityService } from '../personality/personality.ts';
 import { ContextBuilderService } from '../context/context.ts';
 import { ToolRegistry } from '../tools/tools.ts';
-import { toLangChainTools } from '../tools/adapters/adapters.langchain.ts';
+import { toLangChainToolsFiltered } from '../tools/adapters/adapters.langchain.ts';
 import { registerBuiltinTools } from '../tools/builtin/builtin.ts';
 import { MemoryService } from '../memory/memory.ts';
 import type { TriggerContext } from '../triggers/triggers.schemas.ts';
 import { SkillRegistry } from '../skills/skills.ts';
 import { formatSkillActivationPrompt, handleSkillActivationApproval } from '../skills/skills.node.ts';
+import { ExternalServiceRegistry } from '../external/external.ts';
+import {
+  registerExternalServices,
+  registerExternalServiceTools,
+  createServiceFilter,
+} from '../external/external.tools.ts';
 
 import type {
   OrchestratorConfigInput,
@@ -49,6 +55,7 @@ class OrchestratorService {
   #interruptService: InterruptService;
   #memoryService: MemoryService | null = null;
   #skillRegistry: SkillRegistry | null = null;
+  #externalServiceRegistry: ExternalServiceRegistry | null = null;
 
   constructor(services: Services) {
     this.#services = services;
@@ -89,6 +96,11 @@ class OrchestratorService {
     this.#toolRegistry = new ToolRegistry(this.#services);
     registerBuiltinTools(this.#toolRegistry);
 
+    // Initialize external service registry and register external tools
+    this.#externalServiceRegistry = new ExternalServiceRegistry(this.#services);
+    registerExternalServices(this.#externalServiceRegistry);
+    registerExternalServiceTools(this.#toolRegistry);
+
     // Initialize skill registry
     this.#skillRegistry = new SkillRegistry();
 
@@ -128,10 +140,27 @@ class OrchestratorService {
   }
 
   /**
+   * Gets the external service registry.
+   */
+  get externalServiceRegistry(): ExternalServiceRegistry {
+    if (!this.#externalServiceRegistry) {
+      throw new OrchestratorNotConfiguredError();
+    }
+    return this.#externalServiceRegistry;
+  }
+
+  /**
    * Ensures the orchestrator is configured.
    */
   #ensureConfigured = (): void => {
-    if (!this.#config || !this.#llm || !this.#checkpointer || !this.#toolRegistry || !this.#skillRegistry) {
+    if (
+      !this.#config ||
+      !this.#llm ||
+      !this.#checkpointer ||
+      !this.#toolRegistry ||
+      !this.#skillRegistry ||
+      !this.#externalServiceRegistry
+    ) {
       throw new OrchestratorNotConfiguredError();
     }
   };
@@ -222,7 +251,11 @@ class OrchestratorService {
         services: this.#services,
       };
       // These are guaranteed non-null by #ensureConfigured() above
-      const tools = toLangChainTools(this.#toolRegistry as ToolRegistry, toolContext);
+      const tools = toLangChainToolsFiltered(
+        this.#toolRegistry as ToolRegistry,
+        toolContext,
+        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
+      );
 
       // Create and compile graph with tool registry for risk gate, memory service, and skill registry
       const graph = createOrchestratorGraph(
@@ -494,7 +527,11 @@ class OrchestratorService {
         conversationId,
         services: this.#services,
       };
-      const tools = toLangChainTools(this.#toolRegistry as ToolRegistry, toolContext);
+      const tools = toLangChainToolsFiltered(
+        this.#toolRegistry as ToolRegistry,
+        toolContext,
+        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
+      );
 
       // Create and compile graph
       const graph = createOrchestratorGraph(
@@ -645,7 +682,11 @@ class OrchestratorService {
         conversationId,
         services: this.#services,
       };
-      const tools = toLangChainTools(this.#toolRegistry as ToolRegistry, toolContext);
+      const tools = toLangChainToolsFiltered(
+        this.#toolRegistry as ToolRegistry,
+        toolContext,
+        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
+      );
 
       // Create and compile graph
       const graph = createOrchestratorGraph(
@@ -816,7 +857,11 @@ class OrchestratorService {
         conversationId,
         services: this.#services,
       };
-      const tools = toLangChainTools(this.#toolRegistry as ToolRegistry, toolContext);
+      const tools = toLangChainToolsFiltered(
+        this.#toolRegistry as ToolRegistry,
+        toolContext,
+        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
+      );
 
       // Create and compile graph
       const graph = createOrchestratorGraph(
@@ -1060,7 +1105,11 @@ class OrchestratorService {
         triggerId: triggerContext.triggerId,
         triggerName: triggerContext.triggerName,
       };
-      const tools = toLangChainTools(this.#toolRegistry as ToolRegistry, toolContext);
+      const tools = toLangChainToolsFiltered(
+        this.#toolRegistry as ToolRegistry,
+        toolContext,
+        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
+      );
 
       // Create and compile graph
       const graph = createOrchestratorGraph(

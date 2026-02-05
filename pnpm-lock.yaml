@@ -32,6 +32,9 @@ importers:
       grammy:
         specifier: ^1.21.1
         version: 1.39.3
+      home-assistant-js-websocket:
+        specifier: ^9.6.0
+        version: 9.6.0
       knex:
         specifier: ^3.1.0
         version: 3.1.0(better-sqlite3@12.6.2)
@@ -1545,6 +1548,9 @@ packages:
 
   headers-polyfill@4.0.3:
     resolution: {integrity: sha512-IScLbePpkvO846sIwOtOTDjutRMWdXdJmXdMvk6gCBHxFO8d+QKOQedyZSxFTTFYRSmlgSTDtXqqq4pcenBXLQ==}
+
+  home-assistant-js-websocket@9.6.0:
+    resolution: {integrity: sha512-TK8HWW6UjCsUdjIBQRB2sBbEya0VniOBFqFjgqSznJiB7YriNgN8jghyThxOkgxwrnt2eN6oWoZMCTSp1o7H+w==}
 
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
@@ -4330,6 +4336,8 @@ snapshots:
       function-bind: 1.1.2
 
   headers-polyfill@4.0.3: {}
+
+  home-assistant-js-websocket@9.6.0: {}
 
   html-escaper@2.0.2: {}
 

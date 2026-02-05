@@ -70,6 +70,8 @@ type SkillDefinition = {
   tags: string[];
   /** Other skills often used together */
   relatedSkills: string[];
+  /** External services required for this skill to be available */
+  requiredServices?: string[];
 };
 
 /**
