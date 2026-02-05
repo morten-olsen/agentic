@@ -41,7 +41,8 @@
       "Bash(pnpm exec eslint:*)",
       "Bash(pnpm exec prettier:*)",
       "Bash(npx tsc:*)",
-      "Bash(pnpm tsc:*)"
+      "Bash(pnpm tsc:*)",
+      "WebFetch(domain:open-meteo.com)"
     ]
   }
 }
