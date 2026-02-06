@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { projectSchema, goalSchema } from '../user-model/user-model.schemas.ts';
-import { contactSchema } from '../contacts/contacts.schemas.ts';
 import { locationSchema } from '../location/location.schemas.ts';
 import { calendarEventSchema } from '../calendar/calendar.schemas.ts';
 import { pendingTaskContextSchema } from '../tasks/tasks.schemas.ts';
@@ -90,8 +89,6 @@ const agentContextSchema = z.object({
   calendar: calendarAgentContextSchema,
 
   // Recent context
-  recentContacts: z.array(contactSchema),
-  recentTopics: z.array(z.string()),
   pendingTasks: z.array(pendingTaskContextSchema),
 
   // Active conversation (if any)
@@ -109,6 +106,110 @@ const agentContextSchema = z.object({
 
 type AgentContext = z.infer<typeof agentContextSchema>;
 
-export type { TimeOfDay, LocationContext, CalendarAgentContext, UserContext, AgentContext };
+// ============================================================================
+// Context Delta (Change Detection)
+// ============================================================================
 
-export { timeOfDaySchema, locationContextSchema, calendarAgentContextSchema, userContextSchema, agentContextSchema };
+const calendarEventSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  start: z.string(),
+});
+
+type CalendarEventSummary = z.infer<typeof calendarEventSummarySchema>;
+
+const taskSummarySchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  type: z.enum(['user', 'delegated']),
+});
+
+type TaskSummary = z.infer<typeof taskSummarySchema>;
+
+const contextDeltaSchema = z.object({
+  // Time since last context snapshot (minutes)
+  timeSinceLastSnapshot: z.number(),
+
+  // Calendar changes
+  calendar: z.object({
+    newEvents: z.array(calendarEventSummarySchema),
+    cancelledEvents: z.array(calendarEventSummarySchema),
+    upcomingEventChanged: z.boolean(),
+  }),
+
+  // Task changes
+  tasks: z.object({
+    newTasks: z.array(taskSummarySchema),
+    completedTasks: z.array(taskSummarySchema),
+    taskCountDelta: z.number(),
+  }),
+
+  // Location change
+  location: z.object({
+    changed: z.boolean(),
+    previousLocation: z.string().nullable(),
+    currentLocation: z.string().nullable(),
+  }),
+
+  // Day plan changes
+  dayPlan: z.object({
+    isNewDay: z.boolean(),
+    newPriorities: z.array(z.string()),
+    completedPriorities: z.array(z.string()),
+    priorityProgressDelta: z.number(),
+  }),
+
+  // Summary flags for quick checks
+  hasSignificantChanges: z.boolean(),
+  changeSummary: z.array(z.string()),
+});
+
+type ContextDelta = z.infer<typeof contextDeltaSchema>;
+
+const contextWithDeltaSchema = z.object({
+  context: agentContextSchema,
+  delta: contextDeltaSchema.nullable(),
+  snapshotId: z.string(),
+});
+
+type ContextWithDelta = z.infer<typeof contextWithDeltaSchema>;
+
+// ============================================================================
+// Context Cache Entry (Internal)
+// ============================================================================
+
+type ContextCacheEntry = {
+  snapshot: AgentContext;
+  capturedAt: Date;
+  // Extracted IDs for efficient comparison
+  calendarEventIds: Set<string>;
+  taskIds: Set<string>;
+  locationState: string;
+  dayPlanDate: string | null;
+  completedPriorityIds: Set<string>;
+};
+
+export type {
+  TimeOfDay,
+  LocationContext,
+  CalendarAgentContext,
+  UserContext,
+  AgentContext,
+  CalendarEventSummary,
+  TaskSummary,
+  ContextDelta,
+  ContextWithDelta,
+  ContextCacheEntry,
+};
+
+export {
+  timeOfDaySchema,
+  locationContextSchema,
+  calendarAgentContextSchema,
+  userContextSchema,
+  agentContextSchema,
+  calendarEventSummarySchema,
+  taskSummarySchema,
+  contextDeltaSchema,
+  contextWithDeltaSchema,
+};

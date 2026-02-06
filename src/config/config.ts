@@ -263,6 +263,21 @@ const configSchema = convict({
       env: 'GLADOS_TRIGGERS_MAX_COUNT',
     },
   },
+
+  context: {
+    deltaCacheMaxEntries: {
+      doc: 'Maximum number of context snapshots to cache',
+      format: 'int',
+      default: 100,
+      env: 'GLADOS_CONTEXT_CACHE_MAX_ENTRIES',
+    },
+    deltaCacheTtlMinutes: {
+      doc: 'How long to keep context snapshots (minutes)',
+      format: 'int',
+      default: 1440, // 24 hours
+      env: 'GLADOS_CONTEXT_CACHE_TTL_MINUTES',
+    },
+  },
 });
 
 /**
@@ -325,6 +340,10 @@ type Config = {
     maxCatchUpAgeMs: number;
     maxConsecutiveFailures: number;
     maxTriggersPerUser: number;
+  };
+  context: {
+    deltaCacheMaxEntries: number;
+    deltaCacheTtlMinutes: number;
   };
 };
 

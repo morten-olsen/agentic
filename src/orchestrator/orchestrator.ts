@@ -20,6 +20,7 @@ import type { ActiveSkill } from '../skills/skills.schemas.ts';
 import { formatSkillActivationPrompt, handleSkillActivationApproval } from '../skills/skills.node.ts';
 import { generateAvailableSkillsContext } from '../skills/skills.context.ts';
 import { ExternalServiceRegistry } from '../external/external.ts';
+import { generateDeltaInstructions } from '../personality/personality.prompts.ts';
 import {
   registerExternalServices,
   registerExternalServiceTools,
@@ -316,8 +317,18 @@ class OrchestratorService {
       // Build system prompt with context and skills info
       const personality = this.#services.get(PersonalityService);
       const contextBuilder = this.#services.get(ContextBuilderService);
-      const context = await contextBuilder.buildContext();
+      const { context, delta } = await contextBuilder.buildContext({
+        conversationId: conversation.id,
+      });
       let systemPrompt = await personality.buildSystemPrompt(context);
+
+      // Add delta section if there are significant changes since last snapshot
+      if (delta?.hasSignificantChanges) {
+        const deltaSection = generateDeltaInstructions(delta);
+        if (deltaSection) {
+          systemPrompt = `${systemPrompt}\n\n${deltaSection}`;
+        }
+      }
 
       // Add available skills context to system prompt
       const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
@@ -633,8 +644,18 @@ class OrchestratorService {
       // Build system prompt with context and skills info
       const personality = this.#services.get(PersonalityService);
       const contextBuilder = this.#services.get(ContextBuilderService);
-      const context = await contextBuilder.buildContext();
+      const { context, delta } = await contextBuilder.buildContext({
+        conversationId,
+      });
       let systemPrompt = await personality.buildSystemPrompt(context);
+
+      // Add delta section if there are significant changes since last snapshot
+      if (delta?.hasSignificantChanges) {
+        const deltaSection = generateDeltaInstructions(delta);
+        if (deltaSection) {
+          systemPrompt = `${systemPrompt}\n\n${deltaSection}`;
+        }
+      }
 
       // Add available skills context to system prompt
       const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
@@ -817,8 +838,18 @@ class OrchestratorService {
       // Build system prompt with context and skills info
       const personality = this.#services.get(PersonalityService);
       const contextBuilder = this.#services.get(ContextBuilderService);
-      const context = await contextBuilder.buildContext();
+      const { context, delta } = await contextBuilder.buildContext({
+        conversationId,
+      });
       let systemPrompt = await personality.buildSystemPrompt(context);
+
+      // Add delta section if there are significant changes since last snapshot
+      if (delta?.hasSignificantChanges) {
+        const deltaSection = generateDeltaInstructions(delta);
+        if (deltaSection) {
+          systemPrompt = `${systemPrompt}\n\n${deltaSection}`;
+        }
+      }
 
       // Add available skills context to system prompt
       const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
@@ -1007,8 +1038,18 @@ class OrchestratorService {
       // Build system prompt with context
       const personality = this.#services.get(PersonalityService);
       const contextBuilder = this.#services.get(ContextBuilderService);
-      const context = await contextBuilder.buildContext();
-      const systemPrompt = await personality.buildSystemPrompt(context);
+      const { context, delta } = await contextBuilder.buildContext({
+        conversationId,
+      });
+      let systemPrompt = await personality.buildSystemPrompt(context);
+
+      // Add delta section if there are significant changes since last snapshot
+      if (delta?.hasSignificantChanges) {
+        const deltaSection = generateDeltaInstructions(delta);
+        if (deltaSection) {
+          systemPrompt = `${systemPrompt}\n\n${deltaSection}`;
+        }
+      }
 
       // Get tools as LangChain tools
       const toolContext = {
@@ -1279,9 +1320,10 @@ class OrchestratorService {
 
     try {
       // Build system prompt with trigger context
+      // Note: No delta tracking for background invocations - each trigger is a fresh context
       const personality = this.#services.get(PersonalityService);
       const contextBuilder = this.#services.get(ContextBuilderService);
-      const context = await contextBuilder.buildContext();
+      const { context } = await contextBuilder.buildContext();
       const systemPrompt = await personality.buildSystemPrompt(context, 'default', triggerContext);
 
       // Get tools as LangChain tools with trigger context

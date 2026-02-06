@@ -1,4 +1,4 @@
-import type { AgentContext } from '../context/context.ts';
+import type { AgentContext, ContextDelta } from '../context/context.ts';
 import type { TriggerContext } from '../triggers/triggers.schemas.ts';
 import type { ActiveSkill } from '../skills/skills.schemas.ts';
 import type { SkillRegistry } from '../skills/skills.ts';
@@ -376,6 +376,42 @@ const buildSystemPrompt = (
   return sections.join('\n\n');
 };
 
+/**
+ * Formats a duration in minutes to a human-readable string.
+ */
+const formatDuration = (minutes: number): string => {
+  if (minutes < 60) {
+    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hour${hours !== 1 ? 's' : ''}`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days} day${days !== 1 ? 's' : ''}`;
+};
+
+/**
+ * Generates instructions for context changes since the last snapshot.
+ * Returns an empty string if there are no significant changes.
+ */
+const generateDeltaInstructions = (delta: ContextDelta): string => {
+  if (!delta.hasSignificantChanges) {
+    return '';
+  }
+
+  const lines: string[] = [
+    '## Since We Last Spoke',
+    '',
+    `Time elapsed: ${formatDuration(delta.timeSinceLastSnapshot)}`,
+    '',
+    'Changes:',
+    ...delta.changeSummary.map((change) => `- ${change}`),
+  ];
+
+  return lines.join('\n');
+};
+
 export type { BuildSystemPromptOptions };
 export {
   buildSystemPrompt,
@@ -385,5 +421,7 @@ export {
   generateTopicGuidelines,
   generateExamplesSection,
   generateTriggerInstructions,
+  generateDeltaInstructions,
+  formatDuration,
   SYSTEM_TOOL_INSTRUCTIONS,
 };

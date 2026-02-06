@@ -140,6 +140,8 @@ Ideas for future enhancement (out of scope for current version).
 | 009-external-services.md | Implemented | Third-party service integration |
 | 010-debugging-skill.md | In Progress | System introspection and debugging |
 | 011-logging.md | Draft | Structured logging system |
+| 012-calendar-sync.md | Completed | Calendar synchronization from external sources |
+| 013-context-change-detection.md | Draft | Incremental context updates with change detection |
 
 ## Tips for AI Agents
 

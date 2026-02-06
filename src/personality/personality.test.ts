@@ -188,8 +188,6 @@ describe('PersonalityService', () => {
           shouldLeaveBy: null,
           todayAgenda: '',
         },
-        recentContacts: [],
-        recentTopics: [],
         pendingTasks: [],
         dayPlan: null,
       };

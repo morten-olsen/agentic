@@ -4,7 +4,6 @@ import type { DayPlanContext } from '../day-planner/day-planner.schemas.ts';
 import { UserModelService } from '../user-model/user-model.ts';
 import { LocationService } from '../location/location.ts';
 import { CalendarService } from '../calendar/calendar.ts';
-import { MemoryService } from '../memory/memory.ts';
 import { TaskService } from '../tasks/tasks.ts';
 import { DayPlanService } from '../day-planner/day-planner.ts';
 import { ExternalServiceRegistry } from '../external/external.ts';
@@ -13,50 +12,101 @@ import { getConfig } from '../config/config.ts';
 import type { HomeAssistantClient, HaPersonState } from '../external/homeassistant/index.ts';
 import { recordCoordinate } from '../location/location.store.ts';
 
-import type { AgentContext, LocationContext, CalendarAgentContext, UserContext } from './context.schemas.ts';
+import type {
+  AgentContext,
+  LocationContext,
+  CalendarAgentContext,
+  UserContext,
+  ContextDelta,
+  ContextWithDelta,
+  ContextCacheEntry,
+} from './context.schemas.ts';
+
+/**
+ * Options for building context with optional delta tracking.
+ */
+type BuildContextOptions = {
+  conversationId?: string;
+  now?: Date;
+};
 
 /**
  * Context Builder Service - assembles a unified view for the agent.
  *
  * Combines data from User Model, Contacts, Location, and Calendar
  * to provide the agent with complete situational awareness.
+ *
+ * Supports context change detection by caching snapshots per conversation
+ * and computing deltas between them.
  */
 class ContextBuilderService {
   #services: Services;
   #lastRecordedLocationChange: string | null = null;
+  #cache = new Map<string, ContextCacheEntry>();
+  #cacheConfig: {
+    maxEntries: number;
+    ttlMinutes: number;
+  };
 
   constructor(services: Services) {
     this.#services = services;
+    const config = getConfig();
+    this.#cacheConfig = {
+      maxEntries: config.context?.deltaCacheMaxEntries ?? 100,
+      ttlMinutes: config.context?.deltaCacheTtlMinutes ?? 1440,
+    };
   }
 
   /**
-   * Builds the full agent context.
-   * Call this at the start of each interaction to give the agent a complete picture.
+   * Builds context with optional change detection.
+   *
+   * @param options.conversationId - Enable delta tracking for this conversation
+   * @param options.now - Override current time (for testing)
+   * @returns Context with optional delta (null if no previous snapshot or no conversationId)
    */
-  buildContext = async (now: Date = new Date()): Promise<AgentContext> => {
+  buildContext = async (options: BuildContextOptions = {}): Promise<ContextWithDelta> => {
+    const now = options.now ?? new Date();
+    const conversationId = options.conversationId;
+
+    // Get previous snapshot if tracking deltas
+    const previous = conversationId ? this.#getCachedEntry(conversationId, now) : null;
+
+    // Build current context (existing logic)
+    const context = await this.#buildFullContext(now);
+
+    // Compute delta if we have a previous snapshot
+    const delta = previous ? this.#computeDelta(previous, context, now) : null;
+
+    // Cache current snapshot
+    if (conversationId) {
+      this.#cacheSnapshot(conversationId, context, now);
+    }
+
+    return {
+      context,
+      delta,
+      snapshotId: `${conversationId ?? 'anon'}-${now.getTime()}`,
+    };
+  };
+
+  /**
+   * Builds the full agent context (internal implementation).
+   */
+  #buildFullContext = async (now: Date): Promise<AgentContext> => {
     const userModel = this.#services.get(UserModelService);
     const identity = await userModel.getIdentity();
     const timezone = identity?.timezone ?? 'UTC';
 
-    const [
-      userContext,
-      locationContext,
-      calendarContext,
-      recentTopics,
-      pendingTasks,
-      dayPlanContext,
-      timeOfDay,
-      localTime,
-    ] = await Promise.all([
-      this.#buildUserContext(),
-      this.#buildLocationContext(),
-      this.#buildCalendarContext(now),
-      this.#getRecentTopics(),
-      this.#getPendingTasks(),
-      this.#getDayPlanContext(),
-      userModel.getTimeOfDay(now),
-      userModel.formatLocalTime(now),
-    ]);
+    const [userContext, locationContext, calendarContext, pendingTasks, dayPlanContext, timeOfDay, localTime] =
+      await Promise.all([
+        this.#buildUserContext(),
+        this.#buildLocationContext(),
+        this.#buildCalendarContext(now),
+        this.#getPendingTasks(),
+        this.#getDayPlanContext(),
+        userModel.getTimeOfDay(now),
+        userModel.formatLocalTime(now),
+      ]);
 
     return {
       // Time (when)
@@ -75,9 +125,7 @@ class ContextBuilderService {
       // Calendar awareness
       calendar: calendarContext,
 
-      // Recent context from memory
-      recentContacts: [],
-      recentTopics,
+      // Recent context
       pendingTasks,
 
       // No active conversation by default
@@ -86,6 +134,192 @@ class ContextBuilderService {
       // Day plan awareness
       dayPlan: dayPlanContext,
     };
+  };
+
+  /**
+   * Gets a cached entry if it exists and is not expired.
+   */
+  #getCachedEntry = (conversationId: string, now: Date): ContextCacheEntry | null => {
+    const entry = this.#cache.get(conversationId);
+    if (!entry) return null;
+
+    // Check TTL
+    const ageMinutes = (now.getTime() - entry.capturedAt.getTime()) / 60000;
+    if (ageMinutes > this.#cacheConfig.ttlMinutes) {
+      this.#cache.delete(conversationId);
+      return null;
+    }
+
+    return entry;
+  };
+
+  /**
+   * Caches a context snapshot for future delta computation.
+   */
+  #cacheSnapshot = (conversationId: string, context: AgentContext, capturedAt: Date): void => {
+    // LRU eviction if cache is full
+    if (this.#cache.size >= this.#cacheConfig.maxEntries) {
+      const oldestKey = this.#cache.keys().next().value;
+      if (oldestKey) this.#cache.delete(oldestKey);
+    }
+
+    // Extract IDs for efficient comparison
+    const entry: ContextCacheEntry = {
+      snapshot: context,
+      capturedAt,
+      calendarEventIds: new Set(
+        [context.calendar.currentEvent?.id, context.calendar.nextEvent?.id].filter(
+          (id): id is string => id !== undefined && id !== null,
+        ),
+      ),
+      taskIds: new Set(context.pendingTasks.map((t) => t.id)),
+      locationState: this.#getLocationState(context.location),
+      dayPlanDate: context.dayPlan?.date ?? null,
+      completedPriorityIds: new Set(context.dayPlan?.priorities.filter((p) => p.completed).map((p) => p.id) ?? []),
+    };
+
+    this.#cache.set(conversationId, entry);
+  };
+
+  /**
+   * Gets a simplified location state string for comparison.
+   */
+  #getLocationState = (location: LocationContext): string => {
+    if (location.atHome) return 'home';
+    if (location.atWork) return 'work';
+    if (location.traveling) return 'away';
+    return 'unknown';
+  };
+
+  /**
+   * Computes the delta between a previous snapshot and current context.
+   */
+  #computeDelta = (previous: ContextCacheEntry, current: AgentContext, now: Date): ContextDelta => {
+    const timeSinceLastSnapshot = Math.round((now.getTime() - previous.capturedAt.getTime()) / 60000);
+
+    // Calendar delta
+    const currentCalendarIds = new Set(
+      [current.calendar.currentEvent?.id, current.calendar.nextEvent?.id].filter(
+        (id): id is string => id !== undefined && id !== null,
+      ),
+    );
+
+    const newEventIds = [...currentCalendarIds].filter((id) => !previous.calendarEventIds.has(id));
+    const cancelledEventIds = [...previous.calendarEventIds].filter((id) => !currentCalendarIds.has(id));
+
+    // Task delta
+    const currentTaskIds = new Set(current.pendingTasks.map((t) => t.id));
+    const newTaskIds = [...currentTaskIds].filter((id) => !previous.taskIds.has(id));
+    const completedTaskIds = [...previous.taskIds].filter((id) => !currentTaskIds.has(id));
+
+    // Location delta
+    const currentLocationState = this.#getLocationState(current.location);
+    const locationChanged = currentLocationState !== previous.locationState;
+
+    // Day plan delta
+    // isNewDay is true only when:
+    // - Both have day plans and the dates differ (user moved to a new day plan)
+    // NOT when both are null (no change) or one appears/disappears
+    const currentDayPlanDate = current.dayPlan?.date ?? null;
+    const isNewDay =
+      currentDayPlanDate !== null && previous.dayPlanDate !== null && currentDayPlanDate !== previous.dayPlanDate;
+    // hasDayPlanAppeared: a day plan was created since last snapshot
+    const hasDayPlanAppeared = previous.dayPlanDate === null && currentDayPlanDate !== null;
+
+    const currentCompletedIds = new Set(current.dayPlan?.priorities.filter((p) => p.completed).map((p) => p.id) ?? []);
+    const newlyCompletedPriorities = [...currentCompletedIds].filter((id) => !previous.completedPriorityIds.has(id));
+
+    // Build change summary
+    const changeSummary: string[] = [];
+    if (newEventIds.length > 0) {
+      changeSummary.push(`${newEventIds.length} new calendar event(s)`);
+    }
+    if (cancelledEventIds.length > 0) {
+      changeSummary.push(`${cancelledEventIds.length} cancelled event(s)`);
+    }
+    if (newTaskIds.length > 0) {
+      changeSummary.push(`${newTaskIds.length} new task(s)`);
+    }
+    if (completedTaskIds.length > 0) {
+      changeSummary.push(`${completedTaskIds.length} completed task(s)`);
+    }
+    if (locationChanged) {
+      changeSummary.push(`Location changed: ${previous.locationState} → ${currentLocationState}`);
+    }
+    if (isNewDay) {
+      changeSummary.push('New day plan');
+    } else if (hasDayPlanAppeared) {
+      changeSummary.push('Day plan created');
+    } else if (newlyCompletedPriorities.length > 0) {
+      changeSummary.push(`${newlyCompletedPriorities.length} priority completed`);
+    }
+
+    const hasSignificantChanges = changeSummary.length > 0;
+
+    return {
+      timeSinceLastSnapshot,
+
+      calendar: {
+        newEvents: newEventIds.map((id) => {
+          const event = [current.calendar.currentEvent, current.calendar.nextEvent].find((e) => e?.id === id);
+          return event ? { id: event.id, title: event.title, start: event.start } : { id, title: 'Unknown', start: '' };
+        }),
+        cancelledEvents: cancelledEventIds.map((id) => {
+          // Try to get info from previous snapshot
+          const prevEvent = [previous.snapshot.calendar.currentEvent, previous.snapshot.calendar.nextEvent].find(
+            (e) => e?.id === id,
+          );
+          return prevEvent
+            ? { id: prevEvent.id, title: prevEvent.title, start: prevEvent.start }
+            : { id, title: 'Unknown', start: '' };
+        }),
+        upcomingEventChanged: current.calendar.nextEvent?.id !== previous.snapshot.calendar.nextEvent?.id,
+      },
+
+      tasks: {
+        newTasks: current.pendingTasks
+          .filter((t) => newTaskIds.includes(t.id))
+          .map((t) => ({ id: t.id, description: t.description, type: t.type })),
+        completedTasks: previous.snapshot.pendingTasks
+          .filter((t) => completedTaskIds.includes(t.id))
+          .map((t) => ({ id: t.id, description: t.description, type: t.type })),
+        taskCountDelta: current.pendingTasks.length - previous.taskIds.size,
+      },
+
+      location: {
+        changed: locationChanged,
+        previousLocation: previous.locationState,
+        currentLocation: currentLocationState,
+      },
+
+      dayPlan: {
+        isNewDay: isNewDay || hasDayPlanAppeared,
+        newPriorities:
+          isNewDay || hasDayPlanAppeared ? (current.dayPlan?.priorities.map((p) => p.description) ?? []) : [],
+        completedPriorities:
+          current.dayPlan?.priorities
+            .filter((p) => newlyCompletedPriorities.includes(p.id))
+            .map((p) => p.description) ?? [],
+        priorityProgressDelta: newlyCompletedPriorities.length,
+      },
+
+      hasSignificantChanges,
+      changeSummary,
+    };
+  };
+
+  /**
+   * Clears the context cache. Useful for testing.
+   */
+  clearCache = (): void => {
+    this.#cache.clear();
+  };
+
+  /**
+   * Gets the current cache size. Useful for testing.
+   */
+  getCacheSize = (): number => {
+    return this.#cache.size;
   };
 
   /**
@@ -251,19 +485,6 @@ class ContextBuilderService {
   };
 
   /**
-   * Gets recent topics from memory.
-   */
-  #getRecentTopics = async (): Promise<string[]> => {
-    try {
-      const memoryService = this.#services.get(MemoryService);
-      return await memoryService.getRecentTopics(5);
-    } catch {
-      // Memory service may not be available yet, return empty array
-      return [];
-    }
-  };
-
-  /**
    * Gets pending tasks for the context.
    */
   #getPendingTasks = async (): Promise<PendingTaskContext[]> => {
@@ -291,6 +512,17 @@ class ContextBuilderService {
 }
 
 // Re-export types
-export type { AgentContext, LocationContext, CalendarAgentContext, UserContext, TimeOfDay } from './context.schemas.ts';
+export type {
+  AgentContext,
+  LocationContext,
+  CalendarAgentContext,
+  UserContext,
+  TimeOfDay,
+  ContextDelta,
+  ContextWithDelta,
+  ContextCacheEntry,
+} from './context.schemas.ts';
+
+export type { BuildContextOptions };
 
 export { ContextBuilderService };
