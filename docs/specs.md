@@ -142,6 +142,7 @@ Ideas for future enhancement (out of scope for current version).
 | 011-logging.md | Draft | Structured logging system |
 | 012-calendar-sync.md | Completed | Calendar synchronization from external sources |
 | 013-context-change-detection.md | Draft | Incremental context updates with change detection |
+| 014-event-log.md | Implemented | Unified event stream for system changes |
 
 ## Tips for AI Agents
 

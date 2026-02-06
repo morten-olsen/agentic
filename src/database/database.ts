@@ -29,6 +29,7 @@ import * as migration019 from './migrations/019_drop_operator_manuals.ts';
 import * as migration020 from './migrations/020_drop_proactive.ts';
 import * as migration021 from './migrations/021_create_logs.ts';
 import * as migration022 from './migrations/022_calendar_sync.ts';
+import * as migration023 from './migrations/023_events.ts';
 
 type MigrationSource = {
   getMigrations: () => Promise<string[]>;
@@ -59,6 +60,7 @@ const createMigrationSource = (): MigrationSource => {
     '020_drop_proactive': migration020,
     '021_create_logs': migration021,
     '022_calendar_sync': migration022,
+    '023_events': migration023,
   };
 
   return {

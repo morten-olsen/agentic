@@ -2,6 +2,7 @@ import type { Knex } from 'knex';
 
 import type { Services } from '../services/services.ts';
 import { DatabaseService } from '../database/database.ts';
+import { EventService } from '../events/events.ts';
 import type { OrchestratorService } from '../orchestrator/orchestrator.ts';
 import type { TelegramClientService } from '../clients/telegram/telegram.ts';
 
@@ -218,6 +219,8 @@ class TriggerService {
 
     // Calculate and set next invocation time
     const nextInvocation = calculateNextInvocation(trigger);
+    let finalTrigger = trigger;
+
     if (nextInvocation) {
       const updatedTrigger = await updateTrigger(this.#db(), trigger.id, {
         nextInvocationAt: nextInvocation.toISOString(),
@@ -228,10 +231,26 @@ class TriggerService {
         this.#scheduler.schedule(updatedTrigger);
       }
 
-      return updatedTrigger ?? trigger;
+      finalTrigger = updatedTrigger ?? trigger;
     }
 
-    return trigger;
+    await this.#services.get(EventService).emit({
+      type: 'triggers.created',
+      source: 'trigger-service',
+      externalId: `${finalTrigger.id}-created`,
+      summary: `Trigger created: ${finalTrigger.name}`,
+      data: {
+        triggerId: finalTrigger.id,
+        name: finalTrigger.name,
+        goal: finalTrigger.goal,
+        scheduleType: finalTrigger.schedule.type,
+        nextInvocationAt: finalTrigger.nextInvocationAt,
+      },
+      entityId: finalTrigger.id,
+      entityType: 'trigger',
+    });
+
+    return finalTrigger;
   };
 
   /**
@@ -288,6 +307,21 @@ class TriggerService {
       }
     }
 
+    await this.#services.get(EventService).emit({
+      type: 'triggers.updated',
+      source: 'trigger-service',
+      externalId: `${trigger.id}-updated-${trigger.updatedAt}`,
+      summary: `Trigger updated: ${trigger.name}`,
+      data: {
+        triggerId: trigger.id,
+        name: trigger.name,
+        status: trigger.status,
+        updatedFields: Object.keys(input),
+      },
+      entityId: trigger.id,
+      entityType: 'trigger',
+    });
+
     return trigger;
   };
 
@@ -295,12 +329,32 @@ class TriggerService {
    * Deletes a trigger.
    */
   delete = async (id: string): Promise<void> => {
+    // Get trigger info before deleting
+    const trigger = await getTrigger(this.#db(), id);
+
     // Cancel any scheduled timer
     this.#scheduler.cancel(id);
 
     const deleted = await deleteTrigger(this.#db(), id);
     if (!deleted) {
       throw new TriggerNotFoundError(id);
+    }
+
+    if (trigger) {
+      await this.#services.get(EventService).emit({
+        type: 'triggers.deleted',
+        source: 'trigger-service',
+        externalId: `${id}-deleted-${new Date().toISOString()}`,
+        summary: `Trigger deleted: ${trigger.name}`,
+        data: {
+          triggerId: id,
+          name: trigger.name,
+          goal: trigger.goal,
+          invocationCount: trigger.invocationCount,
+        },
+        entityId: id,
+        entityType: 'trigger',
+      });
     }
   };
 
@@ -463,6 +517,24 @@ class TriggerService {
         consecutiveFailures: 0,
       });
 
+      // Emit event for trigger fired
+      await this.#services.get(EventService).emit({
+        type: 'triggers.fired',
+        source: 'trigger-service',
+        externalId: `${triggerId}-fired-${timestamp}`,
+        summary: `Trigger fired: ${trigger.name}`,
+        data: {
+          triggerId: trigger.id,
+          name: trigger.name,
+          goal: trigger.goal,
+          invocationCount: trigger.invocationCount + 1,
+          conversationId,
+        },
+        entityId: trigger.id,
+        entityType: 'trigger',
+        conversationId,
+      });
+
       // Schedule next invocation
       const updatedTrigger = await getTrigger(this.#db(), triggerId);
       if (updatedTrigger && updatedTrigger.status === 'active') {
@@ -482,6 +554,22 @@ class TriggerService {
           consecutiveFailures: failures,
           lastError: errorMessage,
           nextInvocationAt: null,
+        });
+
+        // Emit event for trigger disabled due to failures
+        await this.#services.get(EventService).emit({
+          type: 'triggers.failed',
+          source: 'trigger-service',
+          externalId: `${triggerId}-failed-${new Date().toISOString()}`,
+          summary: `Trigger failed permanently: ${trigger.name}`,
+          data: {
+            triggerId: trigger.id,
+            name: trigger.name,
+            consecutiveFailures: failures,
+            lastError: errorMessage,
+          },
+          entityId: trigger.id,
+          entityType: 'trigger',
         });
 
         // Notify user of failure

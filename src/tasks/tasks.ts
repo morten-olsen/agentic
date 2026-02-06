@@ -1,5 +1,6 @@
 import type { Services } from '../services/services.ts';
 import { DatabaseService } from '../database/database.ts';
+import { EventService } from '../events/events.ts';
 
 import type {
   UserTask,
@@ -84,7 +85,25 @@ class TaskService {
    * Creates a new user task.
    */
   createUserTask = async (input: CreateUserTaskInput): Promise<UserTask> => {
-    return createUserTask(this.#db(), input);
+    const task = await createUserTask(this.#db(), input);
+
+    await this.#services.get(EventService).emit({
+      type: 'tasks.user.created',
+      source: 'task-service',
+      externalId: `${task.id}-created`,
+      summary: `User task created: ${task.description.slice(0, 50)}`,
+      data: {
+        taskId: task.id,
+        description: task.description,
+        status: task.status,
+        triggerType: task.trigger.type,
+        relatedProjects: task.relatedProjects,
+      },
+      entityId: task.id,
+      entityType: 'user-task',
+    });
+
+    return task;
   };
 
   /**
@@ -113,6 +132,22 @@ class TaskService {
     if (!task) {
       throw new TaskNotFoundError(id, 'user');
     }
+
+    await this.#services.get(EventService).emit({
+      type: 'tasks.user.updated',
+      source: 'task-service',
+      externalId: `${task.id}-updated-${task.updatedAt}`,
+      summary: `User task updated: ${task.description.slice(0, 50)}`,
+      data: {
+        taskId: task.id,
+        description: task.description,
+        status: task.status,
+        updatedFields: Object.keys(updates),
+      },
+      entityId: task.id,
+      entityType: 'user-task',
+    });
+
     return task;
   };
 
@@ -120,7 +155,26 @@ class TaskService {
    * Deletes a user task.
    */
   deleteUserTask = async (id: string): Promise<boolean> => {
-    return deleteUserTask(this.#db(), id);
+    const task = await getUserTask(this.#db(), id);
+    const deleted = await deleteUserTask(this.#db(), id);
+
+    if (deleted && task) {
+      await this.#services.get(EventService).emit({
+        type: 'tasks.user.deleted',
+        source: 'task-service',
+        externalId: `${id}-deleted-${new Date().toISOString()}`,
+        summary: `User task deleted: ${task.description.slice(0, 50)}`,
+        data: {
+          taskId: id,
+          description: task.description,
+          status: task.status,
+        },
+        entityId: id,
+        entityType: 'user-task',
+      });
+    }
+
+    return deleted;
   };
 
   /**
@@ -171,6 +225,21 @@ class TaskService {
     if (!updated) {
       throw new TaskNotFoundError(id, 'user');
     }
+
+    await this.#services.get(EventService).emit({
+      type: 'tasks.user.completed',
+      source: 'task-service',
+      externalId: `${id}-completed`,
+      summary: `User task completed: ${updated.description.slice(0, 50)}`,
+      data: {
+        taskId: id,
+        description: updated.description,
+        previousStatus: task.status,
+      },
+      entityId: id,
+      entityType: 'user-task',
+    });
+
     return updated;
   };
 
@@ -190,6 +259,21 @@ class TaskService {
     if (!updated) {
       throw new TaskNotFoundError(id, 'user');
     }
+
+    await this.#services.get(EventService).emit({
+      type: 'tasks.user.cancelled',
+      source: 'task-service',
+      externalId: `${id}-cancelled`,
+      summary: `User task cancelled: ${updated.description.slice(0, 50)}`,
+      data: {
+        taskId: id,
+        description: updated.description,
+        previousStatus: task.status,
+      },
+      entityId: id,
+      entityType: 'user-task',
+    });
+
     return updated;
   };
 
@@ -201,7 +285,25 @@ class TaskService {
    * Creates a new delegated task.
    */
   createTask = async (input: CreateDelegatedTaskInput): Promise<DelegatedTask> => {
-    return createDelegatedTask(this.#db(), input);
+    const task = await createDelegatedTask(this.#db(), input);
+
+    await this.#services.get(EventService).emit({
+      type: 'tasks.delegated.created',
+      source: 'task-service',
+      externalId: `${task.id}-created`,
+      summary: `Delegated task created: ${task.description.slice(0, 50)}`,
+      data: {
+        taskId: task.id,
+        description: task.description,
+        status: task.status,
+        stepCount: task.steps.length,
+        userTaskId: task.userTaskId,
+      },
+      entityId: task.id,
+      entityType: 'delegated-task',
+    });
+
+    return task;
   };
 
   /**
@@ -230,6 +332,22 @@ class TaskService {
     if (!task) {
       throw new TaskNotFoundError(id, 'delegated');
     }
+
+    await this.#services.get(EventService).emit({
+      type: 'tasks.delegated.updated',
+      source: 'task-service',
+      externalId: `${task.id}-updated-${task.updatedAt}`,
+      summary: `Delegated task updated: ${task.description.slice(0, 50)}`,
+      data: {
+        taskId: task.id,
+        description: task.description,
+        status: task.status,
+        updatedFields: Object.keys(updates),
+      },
+      entityId: task.id,
+      entityType: 'delegated-task',
+    });
+
     return task;
   };
 
@@ -237,7 +355,26 @@ class TaskService {
    * Deletes a delegated task.
    */
   deleteTask = async (id: string): Promise<boolean> => {
-    return deleteDelegatedTask(this.#db(), id);
+    const task = await getDelegatedTask(this.#db(), id);
+    const deleted = await deleteDelegatedTask(this.#db(), id);
+
+    if (deleted && task) {
+      await this.#services.get(EventService).emit({
+        type: 'tasks.delegated.deleted',
+        source: 'task-service',
+        externalId: `${id}-deleted-${new Date().toISOString()}`,
+        summary: `Delegated task deleted: ${task.description.slice(0, 50)}`,
+        data: {
+          taskId: id,
+          description: task.description,
+          status: task.status,
+        },
+        entityId: id,
+        entityType: 'delegated-task',
+      });
+    }
+
+    return deleted;
   };
 
   /**
@@ -296,6 +433,21 @@ class TaskService {
     if (!updated) {
       throw new TaskNotFoundError(id, 'delegated');
     }
+
+    await this.#services.get(EventService).emit({
+      type: 'tasks.delegated.started',
+      source: 'task-service',
+      externalId: `${id}-started`,
+      summary: `Delegated task started: ${updated.description.slice(0, 50)}`,
+      data: {
+        taskId: id,
+        description: updated.description,
+        firstStep: updated.steps[0]?.description,
+      },
+      entityId: id,
+      entityType: 'delegated-task',
+    });
+
     return updated;
   };
 
@@ -416,6 +568,22 @@ class TaskService {
     if (!updated) {
       throw new TaskNotFoundError(id, 'delegated');
     }
+
+    await this.#services.get(EventService).emit({
+      type: 'tasks.delegated.completed',
+      source: 'task-service',
+      externalId: `${id}-completed`,
+      summary: `Delegated task completed: ${updated.description.slice(0, 50)}`,
+      data: {
+        taskId: id,
+        description: updated.description,
+        completionSummary: summary,
+        previousStatus: task.status,
+      },
+      entityId: id,
+      entityType: 'delegated-task',
+    });
+
     return updated;
   };
 
@@ -432,6 +600,22 @@ class TaskService {
     if (!updated) {
       throw new TaskNotFoundError(id, 'delegated');
     }
+
+    await this.#services.get(EventService).emit({
+      type: 'tasks.delegated.cancelled',
+      source: 'task-service',
+      externalId: `${id}-cancelled`,
+      summary: `Delegated task cancelled: ${updated.description.slice(0, 50)}`,
+      data: {
+        taskId: id,
+        description: updated.description,
+        reason,
+        previousStatus: task.status,
+      },
+      entityId: id,
+      entityType: 'delegated-task',
+    });
+
     return updated;
   };
 

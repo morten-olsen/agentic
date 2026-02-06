@@ -5,6 +5,7 @@ import { locationSchema } from '../location/location.schemas.ts';
 import { calendarEventSchema } from '../calendar/calendar.schemas.ts';
 import { pendingTaskContextSchema } from '../tasks/tasks.schemas.ts';
 import { dayPlanContextSchema } from '../day-planner/day-planner.schemas.ts';
+import { eventSchema } from '../events/events.schemas.ts';
 
 // ============================================================================
 // Time of Day
@@ -68,6 +69,23 @@ const userContextSchema = z.object({
 type UserContext = z.infer<typeof userContextSchema>;
 
 // ============================================================================
+// Recent Activity Context
+// ============================================================================
+
+const recentActivityContextSchema = z.object({
+  // Recent events from the event log
+  events: z.array(eventSchema),
+  // Human-readable summary of recent activity
+  summary: z.string(),
+  // Breakdown by domain
+  byDomain: z.record(z.string(), z.number()),
+  // Time window covered (hours)
+  hoursBack: z.number(),
+});
+
+type RecentActivityContext = z.infer<typeof recentActivityContextSchema>;
+
+// ============================================================================
 // Agent Context (Full)
 // ============================================================================
 
@@ -90,6 +108,9 @@ const agentContextSchema = z.object({
 
   // Recent context
   pendingTasks: z.array(pendingTaskContextSchema),
+
+  // Recent activity from event log
+  recentActivity: recentActivityContextSchema.optional(),
 
   // Active conversation (if any)
   conversation: z
@@ -194,6 +215,7 @@ export type {
   LocationContext,
   CalendarAgentContext,
   UserContext,
+  RecentActivityContext,
   AgentContext,
   CalendarEventSummary,
   TaskSummary,
@@ -207,6 +229,7 @@ export {
   locationContextSchema,
   calendarAgentContextSchema,
   userContextSchema,
+  recentActivityContextSchema,
   agentContextSchema,
   calendarEventSummarySchema,
   taskSummarySchema,

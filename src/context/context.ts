@@ -6,6 +6,7 @@ import { LocationService } from '../location/location.ts';
 import { CalendarService } from '../calendar/calendar.ts';
 import { TaskService } from '../tasks/tasks.ts';
 import { DayPlanService } from '../day-planner/day-planner.ts';
+import { EventService } from '../events/events.ts';
 import { ExternalServiceRegistry } from '../external/external.ts';
 import { DatabaseService } from '../database/database.ts';
 import { getConfig } from '../config/config.ts';
@@ -17,6 +18,7 @@ import type {
   LocationContext,
   CalendarAgentContext,
   UserContext,
+  RecentActivityContext,
   ContextDelta,
   ContextWithDelta,
   ContextCacheEntry,
@@ -97,16 +99,25 @@ class ContextBuilderService {
     const identity = await userModel.getIdentity();
     const timezone = identity?.timezone ?? 'UTC';
 
-    const [userContext, locationContext, calendarContext, pendingTasks, dayPlanContext, timeOfDay, localTime] =
-      await Promise.all([
-        this.#buildUserContext(),
-        this.#buildLocationContext(),
-        this.#buildCalendarContext(now),
-        this.#getPendingTasks(),
-        this.#getDayPlanContext(),
-        userModel.getTimeOfDay(now),
-        userModel.formatLocalTime(now),
-      ]);
+    const [
+      userContext,
+      locationContext,
+      calendarContext,
+      pendingTasks,
+      dayPlanContext,
+      recentActivity,
+      timeOfDay,
+      localTime,
+    ] = await Promise.all([
+      this.#buildUserContext(),
+      this.#buildLocationContext(),
+      this.#buildCalendarContext(now),
+      this.#getPendingTasks(),
+      this.#getDayPlanContext(),
+      this.#getRecentActivity(),
+      userModel.getTimeOfDay(now),
+      userModel.formatLocalTime(now),
+    ]);
 
     return {
       // Time (when)
@@ -127,6 +138,9 @@ class ContextBuilderService {
 
       // Recent context
       pendingTasks,
+
+      // Recent activity from event log
+      recentActivity,
 
       // No active conversation by default
       conversation: undefined,
@@ -509,6 +523,51 @@ class ContextBuilderService {
       return null;
     }
   };
+
+  /**
+   * Gets recent activity from the event log.
+   * Returns events from the last few hours with a summary.
+   */
+  #getRecentActivity = async (): Promise<RecentActivityContext | undefined> => {
+    try {
+      const eventService = this.#services.get(EventService);
+      const hoursBack = 6; // Look back 6 hours for recent activity
+      const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString();
+
+      const result = await eventService.query({
+        since,
+        limit: 10, // Limit to avoid bloating context
+      });
+
+      if (result.events.length === 0) {
+        return undefined; // Don't include if no recent activity
+      }
+
+      // Group by domain
+      const byDomain: Record<string, number> = {};
+      for (const event of result.events) {
+        const domain = event.type.split('.')[0];
+        byDomain[domain] = (byDomain[domain] ?? 0) + 1;
+      }
+
+      // Build summary
+      const parts: string[] = [];
+      for (const [domain, count] of Object.entries(byDomain)) {
+        parts.push(`${count} ${domain}`);
+      }
+      const summary = `${result.events.length} recent event${result.events.length === 1 ? '' : 's'}: ${parts.join(', ')}`;
+
+      return {
+        events: result.events,
+        summary,
+        byDomain,
+        hoursBack,
+      };
+    } catch {
+      // Event service may not be available, return undefined
+      return undefined;
+    }
+  };
 }
 
 // Re-export types
@@ -517,6 +576,7 @@ export type {
   LocationContext,
   CalendarAgentContext,
   UserContext,
+  RecentActivityContext,
   TimeOfDay,
   ContextDelta,
   ContextWithDelta,

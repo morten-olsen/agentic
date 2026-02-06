@@ -14,6 +14,7 @@ import { registerDayPlannerTools } from './day-planner.ts';
 import { registerTriggerTools } from './triggers.ts';
 import { registerSkillTools } from './skills.ts';
 import { registerArtifactTools } from './artifacts.ts';
+import { registerEventTools } from './events.ts';
 import { weatherTool } from './weather.ts';
 
 /**
@@ -38,6 +39,7 @@ const registerBuiltinTools = (registry: ToolRegistry): void => {
   registerTriggerTools(registry);
   registerSkillTools(registry);
   registerArtifactTools(registry);
+  registerEventTools(registry);
 };
 
 // Re-export individual tools for direct access
@@ -63,6 +65,20 @@ export { registerTriggerTools } from './triggers.ts';
 export { registerSkillTools } from './skills.ts';
 export { registerArtifactTools } from './artifacts.ts';
 export type { GetArtifactInput, GetArtifactOutput, ListArtifactsInput, ListArtifactsOutput } from './artifacts.ts';
+
+export { registerEventTools } from './events.ts';
+export type {
+  QueryEventsInput,
+  QueryEventsOutput,
+  GetRecentChangesInput,
+  GetRecentChangesOutput,
+  GetEventInput,
+  GetEventOutput,
+  GetEventStatsInput,
+  GetEventStatsOutput,
+  CleanupEventsInput,
+  CleanupEventsOutput,
+} from './events.ts';
 
 export { weatherTool } from './weather.ts';
 export type { WeatherInput, WeatherOutput, LocationInfo, CurrentConditions, DailyForecast } from './weather.ts';

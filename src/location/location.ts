@@ -1,6 +1,7 @@
 import type { Services } from '../services/services.ts';
 import { DatabaseService } from '../database/database.ts';
 import { UserModelService } from '../user-model/user-model.ts';
+import { EventService } from '../events/events.ts';
 
 import type {
   Location,
@@ -75,7 +76,24 @@ class LocationService {
    */
   createLocation = async (input: CreateLocationInput): Promise<Location> => {
     const db = this.#services.get(DatabaseService);
-    return store.createLocation(db.knex, input);
+    const location = await store.createLocation(db.knex, input);
+
+    await this.#services.get(EventService).emit({
+      type: 'location.created',
+      source: 'location-service',
+      externalId: `${location.id}-created`,
+      summary: `Location created: ${location.name}`,
+      data: {
+        locationId: location.id,
+        name: location.name,
+        type: location.type,
+        isDefault: location.isDefault,
+      },
+      entityId: location.id,
+      entityType: 'location',
+    });
+
+    return location;
   };
 
   /**
@@ -83,7 +101,24 @@ class LocationService {
    */
   updateLocation = async (id: string, updates: UpdateLocationInput): Promise<Location> => {
     const db = this.#services.get(DatabaseService);
-    return store.updateLocation(db.knex, id, updates);
+    const location = await store.updateLocation(db.knex, id, updates);
+
+    await this.#services.get(EventService).emit({
+      type: 'location.updated',
+      source: 'location-service',
+      externalId: `${location.id}-updated-${location.updatedAt}`,
+      summary: `Location updated: ${location.name}`,
+      data: {
+        locationId: location.id,
+        name: location.name,
+        type: location.type,
+        updatedFields: Object.keys(updates),
+      },
+      entityId: location.id,
+      entityType: 'location',
+    });
+
+    return location;
   };
 
   /**
@@ -91,7 +126,25 @@ class LocationService {
    */
   deleteLocation = async (id: string): Promise<void> => {
     const db = this.#services.get(DatabaseService);
-    return store.deleteLocation(db.knex, id);
+    const location = await store.getLocation(db.knex, id);
+
+    await store.deleteLocation(db.knex, id);
+
+    if (location) {
+      await this.#services.get(EventService).emit({
+        type: 'location.deleted',
+        source: 'location-service',
+        externalId: `${id}-deleted-${new Date().toISOString()}`,
+        summary: `Location deleted: ${location.name}`,
+        data: {
+          locationId: id,
+          name: location.name,
+          type: location.type,
+        },
+        entityId: id,
+        entityType: 'location',
+      });
+    }
   };
 
   // ==========================================================================
@@ -111,7 +164,27 @@ class LocationService {
    */
   setCurrentLocation = async (locationId: string, source: LocationSource = 'manual'): Promise<void> => {
     const db = this.#services.get(DatabaseService);
-    return store.setCurrentLocation(db.knex, locationId, source, 'exact');
+    const location = await store.getLocation(db.knex, locationId);
+
+    await store.setCurrentLocation(db.knex, locationId, source, 'exact');
+
+    if (location) {
+      await this.#services.get(EventService).emit({
+        type: 'location.current.changed',
+        source: 'location-service',
+        externalId: `current-${locationId}-${new Date().toISOString()}`,
+        summary: `Current location set to: ${location.name}`,
+        data: {
+          locationId,
+          locationName: location.name,
+          locationType: location.type,
+          updateSource: source,
+          confidence: 'exact',
+        },
+        entityId: locationId,
+        entityType: 'location',
+      });
+    }
   };
 
   /**
@@ -119,7 +192,17 @@ class LocationService {
    */
   clearCurrentLocation = async (source: LocationSource = 'manual'): Promise<void> => {
     const db = this.#services.get(DatabaseService);
-    return store.setCurrentLocation(db.knex, null, source, 'inferred');
+    await store.setCurrentLocation(db.knex, null, source, 'inferred');
+
+    await this.#services.get(EventService).emit({
+      type: 'location.current.cleared',
+      source: 'location-service',
+      externalId: `current-cleared-${new Date().toISOString()}`,
+      summary: 'Current location cleared (in transit/unknown)',
+      data: {
+        updateSource: source,
+      },
+    });
   };
 
   /**

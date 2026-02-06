@@ -88,7 +88,7 @@ Communication is fragmented across platforms. A personal assistant needs unified
 3. Unified message storage with channel metadata
 4. Contact linking across channels
 5. Start read-only, add write with high-risk gating
-6. Feed messages into Event Log for reactive triggers
+6. Feed messages into Event Log for reactive triggers (Event Log now implemented)
 
 ### Security Considerations
 
@@ -147,167 +147,7 @@ True personal assistants don't just remember—they *anticipate*. This transform
 
 ---
 
-## 3. Event Log
-
-**Status:** Proposed
-**Effort:** Medium-High
-**Impact:** Very High
-**Leverage:** Foundational infrastructure enabling reactive behavior across the system
-
-### Description
-
-A unified event stream capturing all relevant changes from both internal systems and external sources. Rather than rebuilding context snapshots and computing deltas, the system maintains a chronological log of discrete events that agents can query.
-
-**Event Sources:**
-- **Calendar**: Events created, updated, cancelled, started, ended
-- **Tasks**: Created, updated, completed, delegated
-- **Location**: Arrivals, departures, zone transitions
-- **Communications**: Slack messages, emails received/sent (with metadata, not full content)
-- **Health**: Sleep sessions, exercise activities, heart rate anomalies
-- **System**: Triggers fired, conversations started, skills activated
-- **External**: Weather alerts, news mentions, price changes
-
-### Event Structure
-
-```typescript
-type Event = {
-  id: string;
-  type: EventType;              // 'calendar.created' | 'location.changed' | 'slack.message' | ...
-  category: EventCategory;      // 'calendar' | 'tasks' | 'location' | 'communication' | ...
-  timestamp: Date;
-  source: string;               // 'homeassistant' | 'slack' | 'internal' | ...
-
-  // Deduplication
-  externalId?: string;          // ID from source system
-  hash?: string;                // Content hash for duplicate detection
-
-  // Content
-  summary: string;              // Human-readable: "Meeting 'Standup' started"
-  data: Record<string, unknown>; // Full event payload
-
-  // Relations
-  entityId?: string;            // Related entity (contact, project, etc.)
-  conversationId?: string;      // If triggered by/during a conversation
-};
-```
-
-### Query Interface
-
-```typescript
-// Find all events in a time range
-eventLog.query({
-  since: new Date('2024-01-15T00:00:00Z'),
-  until: new Date('2024-01-15T23:59:59Z'),
-  categories: ['calendar', 'tasks'],
-  types: ['calendar.created', 'task.completed'],
-  limit: 100,
-});
-
-// Get events since a checkpoint (for background tasks)
-eventLog.since(lastProcessedEventId);
-
-// Subscribe to event patterns (for reactive triggers)
-eventLog.subscribe({
-  pattern: { category: 'location', type: 'location.arrived' },
-  handler: async (event) => { ... },
-});
-```
-
-### Why It Matters
-
-This is a fundamental shift from **polling** to **event-driven** architecture:
-
-| Current Approach | Event Log Approach |
-|------------------|-------------------|
-| Rebuild context, compute delta | Query events since last interaction |
-| Background tasks don't know what changed | `eventLog.since(checkpoint)` returns all changes |
-| Triggers based on time only | Triggers can react to event patterns |
-| Each service tracks its own changes | Unified view across all sources |
-
-**Enables:**
-- "What happened while I was asleep?" → Query events from midnight to now
-- Background task sees exactly what changed since last run
-- Trigger fires when specific event patterns occur (not just time-based)
-- Audit trail of everything that happened
-- Replay/debugging capabilities
-
-### Use Cases
-
-**Agent Awareness:**
-- "You received 3 Slack messages from Alice while in your meeting"
-- "Your location changed to 'Office' 20 minutes ago"
-- "2 calendar events were added to tomorrow's schedule"
-
-**Reactive Triggers:**
-- Fire when user arrives at a location
-- Fire when a high-priority email arrives
-- Fire when calendar becomes free after being busy
-
-**Background Task Context:**
-```typescript
-// In a background task
-const events = await eventLog.since(task.lastCheckpoint);
-const calendarChanges = events.filter(e => e.category === 'calendar');
-// Now the task knows exactly what calendar changes to process
-```
-
-### Implementation Approach
-
-1. Create `event-log` module with database table and service
-2. Define event type taxonomy (categories, types, schemas)
-3. Add event emission points to existing services (calendar, tasks, location)
-4. Build query API with efficient indexing
-5. Add subscription system for reactive triggers
-6. Create tools for agent to query event log
-7. Integrate with trigger system as new trigger dimension
-
-### Schema Design
-
-```sql
-CREATE TABLE events (
-  id TEXT PRIMARY KEY,
-  type TEXT NOT NULL,           -- 'calendar.created'
-  category TEXT NOT NULL,       -- 'calendar'
-  timestamp TEXT NOT NULL,
-  source TEXT NOT NULL,
-  external_id TEXT,
-  hash TEXT,
-  summary TEXT NOT NULL,
-  data TEXT NOT NULL,           -- JSON
-  entity_id TEXT,
-  conversation_id TEXT,
-
-  UNIQUE(source, external_id),  -- Deduplication
-  INDEX idx_events_timestamp (timestamp),
-  INDEX idx_events_category (category, timestamp),
-  INDEX idx_events_type (type, timestamp)
-);
-```
-
-### Deduplication Strategy
-
-- **External ID**: If source provides an ID, use `(source, external_id)` as unique key
-- **Content Hash**: For events without external IDs, hash key fields to detect duplicates
-- **Time Window**: Same event type + entity within N seconds = likely duplicate
-- **Idempotent Writes**: `INSERT OR IGNORE` semantics
-
-### Retention & Cleanup
-
-- Keep detailed events for N days (configurable, default 30)
-- Summarize/aggregate old events into daily digests
-- Archive to cold storage if needed
-- Never delete events that are referenced by other records
-
-### Migration Path
-
-The Event Log could eventually replace:
-- Context delta tracking (query events instead of computing deltas)
-- Some memory storage (events are a form of episodic memory)
-- Ad-hoc change tracking in individual services
-
----
-
-## 4. Research & Execution Skills
+## 3. Research & Execution Skills
 
 **Status:** Proposed
 **Effort:** Medium
@@ -380,7 +220,7 @@ Each skill follows the existing pattern:
 
 ---
 
-## 5. Tool Builder Skill
+## 4. Tool Builder Skill
 
 **Status:** Proposed
 **Effort:** High
@@ -596,7 +436,7 @@ const skill = {
 
 ---
 
-## 6. Memory Evolution
+## 5. Memory Evolution
 
 **Status:** Proposed
 **Effort:** High
@@ -654,7 +494,7 @@ This is the difference between:
 
 ---
 
-## 7. Financial Awareness
+## 6. Financial Awareness
 
 **Status:** Proposed
 **Effort:** High
@@ -678,7 +518,7 @@ Optional financial tracking:
 
 ---
 
-## 8. Health & Wellness Tracking
+## 7. Health & Wellness Tracking
 
 **Status:** Proposed
 **Effort:** Medium
@@ -707,12 +547,11 @@ Holistic wellness awareness:
 |------|--------|--------|-------------------|
 | Messaging Integration | Medium | Very High | 1 - Unified communication awareness |
 | Anticipatory Intelligence | Medium | High | 2 - Differentiator |
-| Event Log | Medium-High | Very High | 3 - Foundational infrastructure |
-| Research & Execution Skills | Medium | High | 4 - Parallel track |
-| Tool Builder Skill | High | Very High | 5 - Self-extending agent |
-| Memory Evolution | High | Very High | 6 - Long-term investment |
-| Health & Wellness | Medium | Medium | 7 - Nice to have |
-| Financial Awareness | High | Medium | 8 - Complex, sensitive |
+| Research & Execution Skills | Medium | High | 3 - Parallel track |
+| Tool Builder Skill | High | Very High | 4 - Self-extending agent |
+| Memory Evolution | High | Very High | 5 - Long-term investment |
+| Health & Wellness | Medium | Medium | 6 - Nice to have |
+| Financial Awareness | High | Medium | 7 - Complex, sensitive |
 
 **Note:** Daily Briefings don't need a dedicated feature - they're just triggers with goals like "Summarize my calendar, tasks, and weather for today." The existing trigger system + tools (`getAgenda`, `listUserTasks`, `weather.get`, `notify`) already provide this capability with full user control over content.
 

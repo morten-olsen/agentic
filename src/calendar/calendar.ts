@@ -1,5 +1,6 @@
 import type { Services } from '../services/services.ts';
 import { DatabaseService } from '../database/database.ts';
+import { EventService } from '../events/events.ts';
 
 import type {
   CalendarEvent,
@@ -65,7 +66,28 @@ class CalendarService {
    */
   createEvent = async (input: CreateCalendarEventInput): Promise<CalendarEvent> => {
     const db = this.#services.get(DatabaseService);
-    return store.createEvent(db.knex, input);
+    const event = await store.createEvent(db.knex, input);
+
+    // Emit event to event log
+    await this.#services.get(EventService).emit({
+      type: 'calendar.event.created',
+      source: 'calendar-service',
+      externalId: `${event.id}-created`,
+      summary: `Calendar event '${event.title}' created`,
+      data: {
+        eventId: event.id,
+        title: event.title,
+        start: event.start,
+        end: event.end,
+        allDay: event.allDay,
+        location: event.location,
+        source: event.source,
+      },
+      entityId: event.id,
+      entityType: 'calendar-event',
+    });
+
+    return event;
   };
 
   /**
@@ -73,7 +95,29 @@ class CalendarService {
    */
   updateEvent = async (id: string, updates: UpdateCalendarEventInput): Promise<CalendarEvent> => {
     const db = this.#services.get(DatabaseService);
-    return store.updateEvent(db.knex, id, updates);
+    const event = await store.updateEvent(db.knex, id, updates);
+
+    // Emit event to event log
+    await this.#services.get(EventService).emit({
+      type: 'calendar.event.updated',
+      source: 'calendar-service',
+      externalId: `${event.id}-updated-${event.updatedAt}`,
+      summary: `Calendar event '${event.title}' updated`,
+      data: {
+        eventId: event.id,
+        title: event.title,
+        start: event.start,
+        end: event.end,
+        allDay: event.allDay,
+        location: event.location,
+        source: event.source,
+        updatedFields: Object.keys(updates),
+      },
+      entityId: event.id,
+      entityType: 'calendar-event',
+    });
+
+    return event;
   };
 
   /**
@@ -81,7 +125,30 @@ class CalendarService {
    */
   deleteEvent = async (id: string): Promise<void> => {
     const db = this.#services.get(DatabaseService);
-    return store.deleteEvent(db.knex, id);
+
+    // Get event before deleting for the event log
+    const event = await store.getEvent(db.knex, id);
+
+    await store.deleteEvent(db.knex, id);
+
+    // Emit event to event log (only if event existed)
+    if (event) {
+      await this.#services.get(EventService).emit({
+        type: 'calendar.event.deleted',
+        source: 'calendar-service',
+        externalId: `${id}-deleted-${new Date().toISOString()}`,
+        summary: `Calendar event '${event.title}' deleted`,
+        data: {
+          eventId: id,
+          title: event.title,
+          start: event.start,
+          end: event.end,
+          source: event.source,
+        },
+        entityId: id,
+        entityType: 'calendar-event',
+      });
+    }
   };
 
   /**
@@ -110,7 +177,37 @@ class CalendarService {
     excludeIds: string[] = [],
   ): Promise<number> => {
     const db = this.#services.get(DatabaseService);
-    return store.deleteEventsBySourceAndCalendar(db.knex, source, calendarSourceId, excludeIds);
+
+    // Get events before deleting for the event log
+    const eventsToDelete = await store.getEventsBySourceAndCalendar(db.knex, source, calendarSourceId);
+    const filteredEvents = eventsToDelete.filter((e) => !excludeIds.includes(e.id));
+
+    const count = await store.deleteEventsBySourceAndCalendar(db.knex, source, calendarSourceId, excludeIds);
+
+    // Emit events for each deleted event
+    const eventService = this.#services.get(EventService);
+    const timestamp = new Date().toISOString();
+    for (const event of filteredEvents) {
+      await eventService.emit({
+        type: 'calendar.event.deleted',
+        source: 'calendar-service',
+        externalId: `${event.id}-deleted-${timestamp}`,
+        summary: `Calendar event '${event.title}' deleted (sync cleanup)`,
+        data: {
+          eventId: event.id,
+          title: event.title,
+          start: event.start,
+          end: event.end,
+          source: event.source,
+          calendarSourceId,
+          reason: 'sync-cleanup',
+        },
+        entityId: event.id,
+        entityType: 'calendar-event',
+      });
+    }
+
+    return count;
   };
 
   // ==========================================================================
