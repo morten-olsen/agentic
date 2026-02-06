@@ -1,10 +1,12 @@
 # GLaDOS Server Dockerfile
 # Uses Node.js native TypeScript stripping - no build step required
 
-FROM node:24-alpine
+FROM node:24-slim
 
-# Install dependencies for better-sqlite3
-RUN apk add --no-cache python3 make g++ libstdc++
+# Install dependencies for better-sqlite3 native compilation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
