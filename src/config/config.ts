@@ -216,6 +216,21 @@ const configSchema = convict({
     },
   },
 
+  calendarSync: {
+    intervalMinutes: {
+      doc: 'Interval in minutes between calendar sync cycles',
+      format: 'int',
+      default: 15,
+      env: 'GLADOS_CALENDAR_SYNC_INTERVAL_MINUTES',
+    },
+    windowDays: {
+      doc: 'Number of days into the future to sync calendar events',
+      format: 'int',
+      default: 30,
+      env: 'GLADOS_CALENDAR_SYNC_WINDOW_DAYS',
+    },
+  },
+
   triggers: {
     enabled: {
       doc: 'Enable trigger system',
@@ -299,6 +314,10 @@ type Config = {
     token: string;
     calendarEntities: string[];
     personEntity: string;
+  };
+  calendarSync: {
+    intervalMinutes: number;
+    windowDays: number;
   };
   triggers: {
     enabled: boolean;

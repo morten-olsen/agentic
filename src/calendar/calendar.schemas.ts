@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Event Source
 // ============================================================================
 
-const eventSourceSchema = z.enum(['local', 'google', 'outlook', 'ical']);
+const eventSourceSchema = z.enum(['local', 'google', 'outlook', 'ical', 'homeassistant']);
 
 type EventSource = z.infer<typeof eventSourceSchema>;
 
@@ -44,6 +44,7 @@ const calendarEventSchema = z.object({
   id: z.string().uuid(),
   externalId: z.string().optional(),
   source: eventSourceSchema.default('local'),
+  calendarSourceId: z.string().optional(),
   title: z.string().min(1),
   description: z.string().optional(),
   location: z.string().optional(),
@@ -70,6 +71,7 @@ type CalendarEvent = z.infer<typeof calendarEventSchema>;
 const createCalendarEventInputSchema = z.object({
   externalId: z.string().optional(),
   source: eventSourceSchema.optional().default('local'),
+  calendarSourceId: z.string().optional(),
   title: z.string().min(1),
   description: z.string().optional(),
   location: z.string().optional(),

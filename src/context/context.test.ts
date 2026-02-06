@@ -7,7 +7,6 @@ import { LocationService } from '../location/location.ts';
 import { CalendarService } from '../calendar/calendar.ts';
 import { ExternalServiceRegistry } from '../external/external.ts';
 import type { HomeAssistantClient, HaCalendarEvent, HaPersonState } from '../external/homeassistant/index.ts';
-import * as configModule from '../config/config.ts';
 
 import { ContextBuilderService } from './context.ts';
 
@@ -290,127 +289,69 @@ describe('ContextBuilderService', () => {
     });
   });
 
-  describe('Home Assistant Calendar Federation', () => {
-    const createMockHaClient = (events: HaCalendarEvent[]): HomeAssistantClient => ({
-      connection: {} as HomeAssistantClient['connection'],
-      getConfig: vi.fn(),
-      getCalendarEvents: vi.fn().mockResolvedValue(events),
-      getPersonLocation: vi.fn().mockReturnValue(null),
-      disconnect: vi.fn(),
-    });
+  describe('Home Assistant Calendar Sync', () => {
+    // Calendar events from Home Assistant are synced to the database by CalendarSyncService.
+    // The context builder reads from the unified calendar table.
 
-    it('includes HA calendar events in agenda when configured', async () => {
-      // Register a mock HA service
-      const mockEvents: HaCalendarEvent[] = [
-        { start: '2024-01-15T14:00:00+00:00', end: '2024-01-15T15:00:00+00:00', summary: 'HA Meeting' },
-        { start: '2024-01-15', end: '2024-01-16', summary: 'HA All Day Event' },
-      ];
-
-      externalServices.register({
-        id: 'homeassistant',
-        name: 'Home Assistant',
-        description: 'Test HA service',
-        isConfigured: () => true,
-        createClient: async () => createMockHaClient(mockEvents),
+    it('includes synced HA calendar events in agenda', async () => {
+      // Create events that would have been synced from HA
+      await calendar.createEvent({
+        title: 'HA Meeting',
+        source: 'homeassistant',
+        calendarSourceId: 'calendar.test',
+        start: '2024-01-15T14:00:00.000Z',
+        end: '2024-01-15T15:00:00.000Z',
+        timezone: 'UTC',
       });
-
-      // Mock config to have calendar entities using spyOn (works at runtime)
-      const originalConfig = configModule.getConfig();
-      vi.spyOn(configModule, 'getConfig').mockReturnValue({
-        ...originalConfig,
-        homeassistant: {
-          ...originalConfig.homeassistant,
-          url: 'http://localhost:8123',
-          token: 'test-token',
-          calendarEntities: ['calendar.test'],
-        },
+      await calendar.createEvent({
+        title: 'HA All Day Event',
+        source: 'homeassistant',
+        calendarSourceId: 'calendar.test',
+        start: '2024-01-15T00:00:00.000Z',
+        end: '2024-01-16T00:00:00.000Z',
+        allDay: true,
+        timezone: 'UTC',
       });
-
-      // Create a fresh builder to use the mocked config
-      const freshBuilder = new ContextBuilderService(services);
 
       const now = new Date('2024-01-15T10:00:00.000Z');
-      const context = await freshBuilder.buildContext(now);
+      const context = await contextBuilder.buildContext(now);
 
-      expect(context.calendar.todayAgenda).toContain('From Home Assistant:');
       expect(context.calendar.todayAgenda).toContain('HA Meeting');
       expect(context.calendar.todayAgenda).toContain('HA All Day Event');
     });
 
-    it('gracefully handles HA service not configured', async () => {
-      // No HA service registered - should still work
+    it('returns empty agenda when no events exist', async () => {
       const now = new Date('2024-01-15T10:00:00.000Z');
       const context = await contextBuilder.buildContext(now);
 
-      // Should not throw, just returns regular agenda
       expect(context.calendar.todayAgenda).toBe('No events scheduled for today.');
     });
 
-    it('gracefully handles HA service errors', async () => {
-      // Register a failing HA service
-      externalServices.register({
-        id: 'homeassistant',
-        name: 'Home Assistant',
-        description: 'Test HA service',
-        isConfigured: () => true,
-        createClient: async () => ({
-          connection: {} as HomeAssistantClient['connection'],
-          getConfig: vi.fn(),
-          getCalendarEvents: vi.fn().mockRejectedValue(new Error('HA down')),
-          disconnect: vi.fn(),
-        }),
-      });
-
-      const now = new Date('2024-01-15T10:00:00.000Z');
-      const context = await contextBuilder.buildContext(now);
-
-      // Should not throw, just returns regular agenda
-      expect(context.calendar.todayAgenda).toBe('No events scheduled for today.');
-    });
-
-    it('merges GLaDOS and HA events correctly', async () => {
-      // Create a GLaDOS event
+    it('shows both local and synced HA events in agenda', async () => {
+      // Create a local event
       await calendar.createEvent({
-        title: 'GLaDOS Meeting',
+        title: 'Local Meeting',
+        source: 'local',
         start: '2024-01-15T10:00:00.000Z',
         end: '2024-01-15T11:00:00.000Z',
         timezone: 'UTC',
       });
 
-      // Register mock HA service with events
-      const mockEvents: HaCalendarEvent[] = [
-        { start: '2024-01-15T14:00:00+00:00', end: '2024-01-15T15:00:00+00:00', summary: 'HA Team Sync' },
-      ];
-
-      externalServices.register({
-        id: 'homeassistant',
-        name: 'Home Assistant',
-        description: 'Test HA service',
-        isConfigured: () => true,
-        createClient: async () => createMockHaClient(mockEvents),
+      // Create a synced HA event
+      await calendar.createEvent({
+        title: 'HA Team Sync',
+        source: 'homeassistant',
+        calendarSourceId: 'calendar.work',
+        start: '2024-01-15T14:00:00.000Z',
+        end: '2024-01-15T15:00:00.000Z',
+        timezone: 'UTC',
       });
-
-      // Mock config using spyOn (works at runtime)
-      const originalConfig = configModule.getConfig();
-      vi.spyOn(configModule, 'getConfig').mockReturnValue({
-        ...originalConfig,
-        homeassistant: {
-          ...originalConfig.homeassistant,
-          url: 'http://localhost:8123',
-          token: 'test-token',
-          calendarEntities: ['calendar.test'],
-        },
-      });
-
-      // Create a fresh builder to use the mocked config
-      const freshBuilder = new ContextBuilderService(services);
 
       const now = new Date('2024-01-15T09:00:00.000Z');
-      const context = await freshBuilder.buildContext(now);
+      const context = await contextBuilder.buildContext(now);
 
-      // Should have both GLaDOS and HA events
-      expect(context.calendar.todayAgenda).toContain('GLaDOS Meeting');
-      expect(context.calendar.todayAgenda).toContain('From Home Assistant:');
+      // Should have both local and HA events
+      expect(context.calendar.todayAgenda).toContain('Local Meeting');
       expect(context.calendar.todayAgenda).toContain('HA Team Sync');
     });
   });

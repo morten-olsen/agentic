@@ -3,14 +3,14 @@ import type { PendingTaskContext } from '../tasks/tasks.schemas.ts';
 import type { DayPlanContext } from '../day-planner/day-planner.schemas.ts';
 import { UserModelService } from '../user-model/user-model.ts';
 import { LocationService } from '../location/location.ts';
-import { CalendarService, startOfDay, endOfDay } from '../calendar/calendar.ts';
+import { CalendarService } from '../calendar/calendar.ts';
 import { MemoryService } from '../memory/memory.ts';
 import { TaskService } from '../tasks/tasks.ts';
 import { DayPlanService } from '../day-planner/day-planner.ts';
 import { ExternalServiceRegistry } from '../external/external.ts';
 import { DatabaseService } from '../database/database.ts';
 import { getConfig } from '../config/config.ts';
-import type { HomeAssistantClient, HaCalendarEvent, HaPersonState } from '../external/homeassistant/index.ts';
+import type { HomeAssistantClient, HaPersonState } from '../external/homeassistant/index.ts';
 import { recordCoordinate } from '../location/location.store.ts';
 
 import type { AgentContext, LocationContext, CalendarAgentContext, UserContext } from './context.schemas.ts';
@@ -222,17 +222,12 @@ class ContextBuilderService {
 
   /**
    * Builds calendar context with agenda.
+   * Calendar events from Home Assistant are synced to the database by CalendarSyncService.
    */
   #buildCalendarContext = async (now: Date): Promise<CalendarAgentContext> => {
     const calendar = this.#services.get(CalendarService);
 
-    const [context, gladosAgenda] = await Promise.all([calendar.getCurrentContext(now), calendar.getDayAgenda(now)]);
-
-    // Try to get HA calendar events (if configured)
-    const haEvents = await this.#getHaCalendarEvents(now);
-
-    // Merge agendas
-    const todayAgenda = this.#mergeAgendas(gladosAgenda, haEvents);
+    const [context, todayAgenda] = await Promise.all([calendar.getCurrentContext(now), calendar.getDayAgenda(now)]);
 
     // Calculate when to leave for next event (if it has travel time)
     let shouldLeaveBy: string | null = null;
@@ -253,80 +248,6 @@ class ContextBuilderService {
       shouldLeaveBy,
       todayAgenda,
     };
-  };
-
-  /**
-   * Fetches calendar events from Home Assistant (if configured).
-   */
-  #getHaCalendarEvents = async (now: Date): Promise<HaCalendarEvent[]> => {
-    try {
-      const externalServices = this.#services.get(ExternalServiceRegistry);
-      if (!externalServices.isConfigured('homeassistant')) {
-        return [];
-      }
-
-      const config = getConfig();
-      if (config.homeassistant.calendarEntities.length === 0) {
-        return [];
-      }
-
-      const client = await externalServices.getClient<HomeAssistantClient>('homeassistant');
-      const dayStart = startOfDay(now);
-      const dayEnd = endOfDay(now);
-
-      // Fetch from all configured calendars in parallel
-      const results = await Promise.all(
-        config.homeassistant.calendarEntities.map(async (entityId) => {
-          try {
-            return await client.getCalendarEvents(entityId, dayStart, dayEnd);
-          } catch {
-            // Skip calendars that fail (might not exist)
-            return [];
-          }
-        }),
-      );
-
-      return results.flat();
-    } catch {
-      // Log but don't fail - HA being down shouldn't break context
-      return [];
-    }
-  };
-
-  /**
-   * Merges GLaDOS agenda with HA calendar events.
-   */
-  #mergeAgendas = (gladosAgenda: string, haEvents: HaCalendarEvent[]): string => {
-    if (haEvents.length === 0) {
-      return gladosAgenda;
-    }
-
-    // Format HA events
-    const haLines = haEvents
-      .sort((a, b) => a.start.localeCompare(b.start))
-      .map((event) => {
-        const isAllDay = !event.start.includes('T');
-        const time = isAllDay ? 'All day' : this.#formatHaEventTime(event.start);
-        return `- ${time}: ${event.summary}`;
-      });
-
-    // Combine
-    if (gladosAgenda === 'No events scheduled for today.') {
-      return `From Home Assistant:\n${haLines.join('\n')}`;
-    }
-    return `${gladosAgenda}\n\nFrom Home Assistant:\n${haLines.join('\n')}`;
-  };
-
-  /**
-   * Formats an HA event time for display.
-   */
-  #formatHaEventTime = (isoString: string): string => {
-    const date = new Date(isoString);
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
   };
 
   /**

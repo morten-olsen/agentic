@@ -8,7 +8,9 @@ import { OrchestratorService } from '../../orchestrator/orchestrator.ts';
 import { getConversation, getMessages } from '../../orchestrator/orchestrator.store.ts';
 import { PersonalityService } from '../../personality/personality.ts';
 import { TriggerService } from '../../triggers/triggers.ts';
+import { CalendarSyncService } from '../../calendar/calendar-sync.ts';
 import type { Config } from '../../config/config.ts';
+import { isHomeAssistantConfigured } from '../../config/config.ts';
 
 import type { TelegramConfig } from './telegram.schemas.ts';
 import { telegramConfigSchema } from './telegram.schemas.ts';
@@ -64,6 +66,7 @@ class TelegramClientService {
   #bot: Bot | null = null;
   #orchestrator: OrchestratorService | null = null;
   #triggerService: TriggerService | null = null;
+  #calendarSyncService: CalendarSyncService | null = null;
   #assistantName = 'GLaDOS';
   #pendingInterrupts = new Map<number, string>(); // chatId -> interruptId
 
@@ -111,6 +114,11 @@ class TelegramClientService {
     // Register the configured TriggerService in the Services container
     // This is crucial so that tools can access the same instance via services.get(TriggerService)
     this.#services.set(TriggerService, this.#triggerService);
+
+    // Create calendar sync service if Home Assistant is configured
+    if (isHomeAssistantConfigured()) {
+      this.#calendarSyncService = new CalendarSyncService(this.#services);
+    }
 
     // Create bot
     this.#bot = new Bot(this.#config.botToken);
@@ -464,7 +472,7 @@ class TelegramClientService {
   };
 
   /**
-   * Starts the bot (polling mode) and trigger service.
+   * Starts the bot (polling mode), trigger service, and calendar sync.
    */
   start = async (): Promise<void> => {
     if (!this.#bot) {
@@ -479,6 +487,11 @@ class TelegramClientService {
       await this.#triggerService.start();
     }
 
+    // Start calendar sync service
+    if (this.#calendarSyncService) {
+      await this.#calendarSyncService.startBackgroundSync();
+    }
+
     await this.#bot.start({
       onStart: (botInfo) => {
         console.log(`Bot started as @${botInfo.username}`);
@@ -487,9 +500,14 @@ class TelegramClientService {
   };
 
   /**
-   * Stops the bot and trigger service.
+   * Stops the bot, trigger service, and calendar sync.
    */
   stop = async (): Promise<void> => {
+    // Stop calendar sync service
+    if (this.#calendarSyncService) {
+      this.#calendarSyncService.stopBackgroundSync();
+    }
+
     // Stop the trigger service
     if (this.#triggerService) {
       await this.#triggerService.stop();

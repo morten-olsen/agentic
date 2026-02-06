@@ -16,6 +16,7 @@ type CalendarEventRow = {
   id: string;
   external_id: string | null;
   source: string;
+  calendar_source_id: string | null;
   title: string;
   description: string | null;
   location: string | null;
@@ -44,6 +45,7 @@ const eventFromRow = (row: CalendarEventRow): CalendarEvent => ({
   id: row.id,
   externalId: row.external_id ?? undefined,
   source: row.source as EventSource,
+  calendarSourceId: row.calendar_source_id ?? undefined,
   title: row.title,
   description: row.description ?? undefined,
   location: row.location ?? undefined,
@@ -110,6 +112,7 @@ const createEvent = async (knex: Knex, input: CreateCalendarEventInput): Promise
     id,
     external_id: input.externalId ?? null,
     source: input.source ?? 'local',
+    calendar_source_id: input.calendarSourceId ?? null,
     title: input.title,
     description: input.description ?? null,
     location: input.location ?? null,
@@ -149,6 +152,7 @@ const updateEvent = async (knex: Knex, id: string, updates: UpdateCalendarEventI
 
   if (updates.externalId !== undefined) updateData.external_id = updates.externalId ?? null;
   if (updates.source !== undefined) updateData.source = updates.source;
+  if (updates.calendarSourceId !== undefined) updateData.calendar_source_id = updates.calendarSourceId ?? null;
   if (updates.title !== undefined) updateData.title = updates.title;
   if (updates.description !== undefined) updateData.description = updates.description ?? null;
   if (updates.location !== undefined) updateData.location = updates.location ?? null;
@@ -197,6 +201,33 @@ const getEventByExternalId = async (
   return row ? eventFromRow(row) : null;
 };
 
+const getEventsBySourceAndCalendar = async (
+  knex: Knex,
+  source: EventSource,
+  calendarSourceId: string,
+): Promise<CalendarEvent[]> => {
+  const rows = await knex<CalendarEventRow>('calendar_events')
+    .where('source', source)
+    .where('calendar_source_id', calendarSourceId)
+    .orderBy('start_time');
+  return rows.map(eventFromRow);
+};
+
+const deleteEventsBySourceAndCalendar = async (
+  knex: Knex,
+  source: EventSource,
+  calendarSourceId: string,
+  excludeIds: string[] = [],
+): Promise<number> => {
+  let query = knex('calendar_events').where('source', source).where('calendar_source_id', calendarSourceId);
+
+  if (excludeIds.length > 0) {
+    query = query.whereNotIn('id', excludeIds);
+  }
+
+  return query.delete();
+};
+
 export {
   getEvent,
   getEventsInRange,
@@ -206,4 +237,6 @@ export {
   updateEvent,
   deleteEvent,
   getEventByExternalId,
+  getEventsBySourceAndCalendar,
+  deleteEventsBySourceAndCalendar,
 };

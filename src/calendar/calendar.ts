@@ -92,6 +92,27 @@ class CalendarService {
     return store.getEventByExternalId(db.knex, externalId, source);
   };
 
+  /**
+   * Gets all events for a specific source and calendar.
+   */
+  getEventsBySourceAndCalendar = async (source: EventSource, calendarSourceId: string): Promise<CalendarEvent[]> => {
+    const db = this.#services.get(DatabaseService);
+    return store.getEventsBySourceAndCalendar(db.knex, source, calendarSourceId);
+  };
+
+  /**
+   * Deletes events for a source/calendar, optionally excluding specific IDs.
+   * Returns the number of deleted events.
+   */
+  deleteEventsBySourceAndCalendar = async (
+    source: EventSource,
+    calendarSourceId: string,
+    excludeIds: string[] = [],
+  ): Promise<number> => {
+    const db = this.#services.get(DatabaseService);
+    return store.deleteEventsBySourceAndCalendar(db.knex, source, calendarSourceId, excludeIds);
+  };
+
   // ==========================================================================
   // Calendar Context
   // ==========================================================================
