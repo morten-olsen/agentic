@@ -28,7 +28,8 @@ const generateSkillContext = (skill: SkillDefinition, activeSkill: ActiveSkill):
     parts.push('### Available Tools');
     parts.push('');
     for (const tool of skill.tools) {
-      parts.push(`- **${tool.name}**: ${tool.description.split('\n')[0]}`);
+      // Use tool.id as that's the actual tool name in LangChain
+      parts.push(`- **${tool.id}**: ${tool.description.split('\n')[0]}`);
     }
   }
 
@@ -110,4 +111,61 @@ const getActiveSkillsSummary = (activeSkills: ActiveSkill[], skillRegistry: Skil
   return lines.join('\n');
 };
 
-export { generateSkillContext, generateActiveSkillsContext, getActiveSkillToolIds, getActiveSkillsSummary };
+/**
+ * Generates context about available skills that can be activated.
+ * Includes both active and inactive skills.
+ */
+const generateAvailableSkillsContext = (activeSkills: ActiveSkill[], skillRegistry: SkillRegistry): string => {
+  const allSkills = skillRegistry.getAll();
+  if (allSkills.length === 0) {
+    return '';
+  }
+
+  const activeSkillIds = new Set(activeSkills.map((s) => s.id));
+  const sections: string[] = [];
+
+  sections.push('# Available Skills');
+  sections.push('');
+  sections.push('The following skills can be activated to provide additional capabilities:');
+  sections.push('');
+
+  for (const skill of allSkills) {
+    const isActive = activeSkillIds.has(skill.id);
+    const status = isActive ? ' **(ACTIVE)**' : '';
+    const activationTool = `activate_${skill.id}`;
+
+    sections.push(`## ${skill.name}${status}`);
+    sections.push(`- **Description**: ${skill.description}`);
+    if (!isActive) {
+      sections.push(`- **To activate**: Call the \`${activationTool}\` tool`);
+    }
+    sections.push(`- **Provides tools**: ${skill.tools.map((t) => t.id).join(', ')}`);
+    sections.push('');
+  }
+
+  sections.push('---');
+  sections.push('');
+
+  if (activeSkills.length > 0) {
+    sections.push('**Note**: Active skills are marked above. Their tools are now available for use.');
+  } else {
+    sections.push(
+      "**Note**: No skills are currently active. To use a skill's tools, you must first activate the skill.",
+    );
+  }
+
+  sections.push('');
+  sections.push('**IMPORTANT**: When activating a skill, you must WAIT for the activation to complete before');
+  sections.push("calling any of that skill's tools. Do NOT call both the activation tool and a skill tool in the");
+  sections.push('same response. First activate the skill, then in your next response use its tools.');
+
+  return sections.join('\n');
+};
+
+export {
+  generateSkillContext,
+  generateActiveSkillsContext,
+  getActiveSkillToolIds,
+  getActiveSkillsSummary,
+  generateAvailableSkillsContext,
+};

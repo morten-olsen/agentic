@@ -33,6 +33,8 @@ describe('Trigger Invocation Flow', () => {
 
   afterEach(async () => {
     await triggerService.stop();
+    // Allow pending async operations (checkpointing, etc.) to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
     await services.destroy();
   });
 
@@ -336,6 +338,8 @@ describe('TriggerService Integration', () => {
 
   afterEach(async () => {
     await triggerService.stop();
+    // Allow pending async operations (checkpointing, etc.) to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
     await services.destroy();
   });
 

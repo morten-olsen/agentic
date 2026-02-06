@@ -33,7 +33,8 @@ type ActivationOutput = z.infer<typeof activationOutputSchema>;
  * but this tool definition is needed for the LLM to know about the skill.
  */
 const createActivationTool = (skill: SkillDefinition): ToolDefinition => {
-  const toolsList = skill.tools.map((t) => `- ${t.name}: ${t.description}`).join('\n');
+  // Use tool.id as that's the actual tool name in LangChain
+  const toolsList = skill.tools.map((t) => `- ${t.id}: ${t.description}`).join('\n');
 
   return {
     id: `activate_${skill.id}`,

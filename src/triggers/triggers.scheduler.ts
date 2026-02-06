@@ -201,11 +201,28 @@ const calculateNextInvocation = (trigger: Trigger, afterTime: Date = new Date())
 type OnFireCallback = (triggerId: string) => Promise<void>;
 
 /**
+ * Scheduled trigger entry with timer and metadata.
+ */
+type ScheduledTriggerEntry = {
+  timer: ReturnType<typeof setTimeout>;
+  scheduledFireTime: Date;
+};
+
+/**
+ * Snapshot of a scheduled trigger for debugging.
+ */
+type ScheduledTriggerSnapshot = {
+  triggerId: string;
+  scheduledFireTime: string;
+  delayMs: number;
+};
+
+/**
  * In-memory scheduler for triggers.
  * Uses setTimeout for precise timing.
  */
 class TriggerScheduler {
-  #timers = new Map<string, ReturnType<typeof setTimeout>>();
+  #timers = new Map<string, ScheduledTriggerEntry>();
   #onFire: OnFireCallback;
 
   constructor(onFire: OnFireCallback) {
@@ -248,7 +265,7 @@ class TriggerScheduler {
       void this.#onFire(trigger.id);
     }, delay);
 
-    this.#timers.set(trigger.id, timer);
+    this.#timers.set(trigger.id, { timer, scheduledFireTime: nextTime });
     return true;
   };
 
@@ -275,7 +292,7 @@ class TriggerScheduler {
       void this.#onFire(triggerId);
     }, delay);
 
-    this.#timers.set(triggerId, timer);
+    this.#timers.set(triggerId, { timer, scheduledFireTime: at });
     return true;
   };
 
@@ -283,9 +300,9 @@ class TriggerScheduler {
    * Cancels the timer for a trigger.
    */
   cancel = (triggerId: string): boolean => {
-    const timer = this.#timers.get(triggerId);
-    if (timer) {
-      clearTimeout(timer);
+    const entry = this.#timers.get(triggerId);
+    if (entry) {
+      clearTimeout(entry.timer);
       this.#timers.delete(triggerId);
       return true;
     }
@@ -296,8 +313,8 @@ class TriggerScheduler {
    * Cancels all timers.
    */
   cancelAll = (): void => {
-    for (const timer of this.#timers.values()) {
-      clearTimeout(timer);
+    for (const entry of this.#timers.values()) {
+      clearTimeout(entry.timer);
     }
     this.#timers.clear();
   };
@@ -315,13 +332,40 @@ class TriggerScheduler {
   isScheduled = (triggerId: string): boolean => {
     return this.#timers.has(triggerId);
   };
+
+  /**
+   * Gets the scheduled fire time for a trigger.
+   */
+  getScheduledFireTime = (triggerId: string): Date | null => {
+    const entry = this.#timers.get(triggerId);
+    return entry ? entry.scheduledFireTime : null;
+  };
+
+  /**
+   * Gets a snapshot of all scheduled triggers for debugging.
+   */
+  getScheduledTriggers = (): ScheduledTriggerSnapshot[] => {
+    const now = Date.now();
+    const snapshots: ScheduledTriggerSnapshot[] = [];
+
+    for (const [triggerId, entry] of this.#timers.entries()) {
+      snapshots.push({
+        triggerId,
+        scheduledFireTime: entry.scheduledFireTime.toISOString(),
+        delayMs: Math.max(0, entry.scheduledFireTime.getTime() - now),
+      });
+    }
+
+    // Sort by fire time
+    return snapshots.sort((a, b) => a.delayMs - b.delayMs);
+  };
 }
 
 // ============================================================================
 // Exports
 // ============================================================================
 
-export type { CronFields, OnFireCallback };
+export type { CronFields, OnFireCallback, ScheduledTriggerSnapshot };
 
 export {
   // Cron utilities

@@ -1,6 +1,24 @@
+import { debuggingSkill } from './debugging/index.ts';
+import type { SkillRegistry } from './skills.ts';
+
+/**
+ * Registers all builtin skills with the given registry.
+ */
+const registerBuiltinSkills = (registry: SkillRegistry): void => {
+  registry.register(debuggingSkill);
+};
+
+// ============================================================================
+// Exports
+// ============================================================================
+
 // Main service
 export { SkillRegistry, DEFAULT_SKILLS_CONFIG } from './skills.ts';
 export type { SkillsConfig } from './skills.ts';
+
+// Builtin skills registration
+export { registerBuiltinSkills };
+export { debuggingSkill } from './debugging/index.ts';
 
 // Schemas and types
 export {

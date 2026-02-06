@@ -262,7 +262,7 @@ export type {
 } from './tasks/tasks.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Phase 6: Proactive & Notifications
+// Phase 6: Notifications
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Notifications
@@ -314,44 +314,6 @@ export type {
   AttentionConfig,
 } from './notifications/notifications.ts';
 
-// Proactive
-export {
-  ProactiveScheduler,
-  CheckNotFoundError,
-  CheckAlreadyExistsError,
-  CheckExecutionError,
-  RunNotFoundError,
-  InvalidCronExpressionError,
-  SchedulerAlreadyRunningError,
-  checkTypeSchema,
-  runStatusSchema,
-  suggestedActionTypeSchema,
-  suggestedActionSchema,
-  proactiveResultSchema,
-  proactiveCheckSchema,
-  createCheckInputSchema,
-  updateCheckInputSchema,
-  proactiveRunSchema,
-  parseCron,
-  matchesCron,
-  shouldRunCheck,
-  getBuiltinCheckDefinitions,
-  getBuiltinCheckInputs,
-  BUILTIN_CHECKS,
-} from './proactive/proactive.ts';
-export type {
-  CheckType,
-  RunStatus,
-  SuggestedAction,
-  ProactiveResult,
-  ProactiveCheck,
-  CreateCheckInput,
-  UpdateCheckInput,
-  ProactiveRun,
-  CheckContext,
-  CheckExecutor,
-} from './proactive/proactive.ts';
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Artifacts
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -382,3 +344,31 @@ export {
   ArtifactSizeLimitError,
   ArtifactLimitExceededError,
 } from './artifacts/artifacts.errors.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Logging
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export {
+  LogService,
+  extractErrorDetails,
+  logLevelSchema,
+  logEntrySchema,
+  logContextSchema,
+  logQueryFiltersSchema,
+  logStatsSchema,
+  logConfigSchema,
+  LOG_LEVEL_PRIORITY,
+  formatLogEntry,
+  writeToTerminal,
+} from './logging/index.ts';
+export type {
+  Logger,
+  LogLevel,
+  LogEntry,
+  LogContext,
+  LogQueryFilters,
+  LogStats,
+  LogConfig,
+  LogConfigInput,
+} from './logging/index.ts';

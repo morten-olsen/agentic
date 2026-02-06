@@ -131,22 +131,7 @@ src/tasks/
 └── tasks.test.ts          # Unit tests
 ```
 
-### Proactive Modules (Phase 6 - DEPRECATED)
-
-**Note**: The proactive scheduler is deprecated in favor of the new Trigger System (see below).
-
-```
-src/proactive/
-├── proactive.ts           # ProactiveScheduler service (deprecated)
-├── proactive.schemas.ts   # Check, Run, Result types
-├── proactive.store.ts     # Check and run persistence
-├── proactive.checks.ts    # Built-in check implementations
-├── proactive.errors.ts    # Custom errors
-├── proactive.cli.ts       # Entry point (pnpm proactive)
-└── proactive.test.ts      # Unit tests
-```
-
-### Trigger System (replaces ProactiveScheduler)
+### Trigger System
 
 ```
 src/triggers/
@@ -165,7 +150,7 @@ The trigger system provides agent-managed scheduled invocations:
 - **Continuation**: Agents can persist a plain text note between invocations via `update_trigger({ continuation: "..." })` to avoid redundant notifications and track state changes
 - **Self-management**: Triggers can update or delete themselves
 - **Notifications**: Background triggers can notify users via Telegram using the `notify` tool
-- **Pre-installed triggers**: `daily-briefing`, `calendar-lookahead`, `stale-followups`
+- **User-defined**: No pre-installed triggers - users create the triggers they need
 
 ### Day Planner Module
 
@@ -325,7 +310,7 @@ pnpm test:unit         # Vitest
 pnpm build             # TypeScript build
 pnpm cli               # Start the interactive CLI
 pnpm telegram          # Start the Telegram bot
-pnpm proactive         # Start the proactive scheduler
+pnpm server            # Start the server (Telegram bot)
 pnpm conversation <id> # Inspect a conversation by ID (debugging)
 ```
 
@@ -396,7 +381,7 @@ All initial phases are complete:
 3. **Human in the Loop** - Interrupts, Risk Gate, Approvals ✅
 4. **Memory** - Storage, Embeddings, Recall, Entity Knowledge ✅
 5. **Long-Running Tasks** - User Tasks, Delegated Tasks, Multi-step workflows ✅
-6. **Proactive & Notifications** - Scheduler, Channels, Attention Budget ✅
+6. **Notifications** - Channels, Attention Budget ✅
 7. **Tool Discovery** - Tool Sets, Discovery Agent ✅
 8. **Skills System** - Gated domain-specific capabilities, approval flow ✅
 
@@ -455,7 +440,6 @@ The "who, where, when" foundation:
 ### Proactive, Not Just Reactive
 
 - **Trigger System**: Agent-managed scheduled invocations (one-time or cron)
-- **Pre-installed triggers**: Calendar lookahead, stale follow-ups, daily briefing
 - **Day Planning**: Structured daily planning with priorities and focus blocks
 - **Long-running tasks**: Multi-step workflows that span hours/days
 

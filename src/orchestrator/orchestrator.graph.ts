@@ -274,7 +274,7 @@ const createOrchestratorGraph = (
 
   // Create the risk gate node (if tool registry provided)
   const riskGateNode = toolRegistry
-    ? createRiskGateNode(toolRegistry, approvalLevels ?? DEFAULT_APPROVAL_LEVELS)
+    ? createRiskGateNode(toolRegistry, approvalLevels ?? DEFAULT_APPROVAL_LEVELS, skillRegistry)
     : async () => ({ approvedToolCalls: [], interruptRequired: false });
 
   // Create the memory retriever node (with optional MemoryService)

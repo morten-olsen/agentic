@@ -167,21 +167,6 @@ const configSchema = convict({
     },
   },
 
-  proactive: {
-    enabled: {
-      doc: 'Enable proactive scheduler',
-      format: Boolean,
-      default: true,
-      env: 'GLADOS_PROACTIVE_ENABLED',
-    },
-    checkIntervalMs: {
-      doc: 'Interval between scheduler checks in milliseconds',
-      format: 'int',
-      default: 60000,
-      env: 'GLADOS_PROACTIVE_INTERVAL',
-    },
-  },
-
   notifications: {
     quietHoursStart: {
       doc: 'Start of quiet hours (HH:mm format)',
@@ -303,10 +288,6 @@ type Config = {
     openaiApiKey: string;
     openaiModel: string;
     openaiDimensions: number;
-  };
-  proactive: {
-    enabled: boolean;
-    checkIntervalMs: number;
   };
   notifications: {
     quietHoursStart: string;

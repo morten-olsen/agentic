@@ -48,7 +48,7 @@ const createTestSkill = (overrides: Partial<SkillDefinition> = {}): SkillDefinit
   activationReason: 'Low risk test skill',
   tools: [
     {
-      id: 'test-skill.test-tool',
+      id: 'test-skill_test-tool',
       name: 'TestTool',
       description: 'A test tool',
       category: 'test',
@@ -141,10 +141,12 @@ describe('Skill Schemas', () => {
       const pending = pendingSkillActivationSchema.parse({
         skillId: 'test-skill',
         activationParams: { param: 'value' },
+        toolCallId: 'call_123',
       });
 
       expect(pending.skillId).toBe('test-skill');
       expect(pending.activationParams).toEqual({ param: 'value' });
+      expect(pending.toolCallId).toBe('call_123');
     });
   });
 });
@@ -406,7 +408,7 @@ describe('Skills Context', () => {
 
       const toolIds = getActiveSkillToolIds(activeSkills, registry);
 
-      expect(toolIds.has('test-skill.test-tool')).toBe(true);
+      expect(toolIds.has('test-skill_test-tool')).toBe(true);
     });
 
     it('returns empty set when no skills active', () => {
@@ -476,7 +478,8 @@ describe('Skills Node', () => {
 
       expect(prompt).toContain('Test Skill');
       expect(prompt).toContain('Low risk test skill');
-      expect(prompt).toContain('TestTool');
+      // Uses tool.id, not tool.name, as that's the actual tool identifier
+      expect(prompt).toContain('test-skill_test-tool');
     });
   });
 });

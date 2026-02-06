@@ -1,19 +1,24 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
 import type { BaseMessage } from '@langchain/core/messages';
+import type { DynamicStructuredTool } from '@langchain/core/tools';
 
 import type { Services } from '../services/services.ts';
 import { DatabaseService } from '../database/database.ts';
 import { PersonalityService } from '../personality/personality.ts';
 import { ContextBuilderService } from '../context/context.ts';
+import { LogService } from '../logging/index.ts';
 import { ToolRegistry } from '../tools/tools.ts';
-import { toLangChainToolsFiltered } from '../tools/adapters/adapters.langchain.ts';
+import { toLangChainToolsFiltered, toLangChainTool } from '../tools/adapters/adapters.langchain.ts';
 import { registerBuiltinTools } from '../tools/builtin/builtin.ts';
 import { KnexStore } from '../store/store.ts';
 import { MemoryService } from '../memory/memory.ts';
 import type { TriggerContext } from '../triggers/triggers.schemas.ts';
 import { SkillRegistry } from '../skills/skills.ts';
+import { registerBuiltinSkills, createActivationTools } from '../skills/index.ts';
+import type { ActiveSkill } from '../skills/skills.schemas.ts';
 import { formatSkillActivationPrompt, handleSkillActivationApproval } from '../skills/skills.node.ts';
+import { generateAvailableSkillsContext } from '../skills/skills.context.ts';
 import { ExternalServiceRegistry } from '../external/external.ts';
 import {
   registerExternalServices,
@@ -57,6 +62,7 @@ class OrchestratorService {
   #memoryService: MemoryService | null = null;
   #skillRegistry: SkillRegistry | null = null;
   #externalServiceRegistry: ExternalServiceRegistry | null = null;
+  #logService: LogService | null = null;
 
   constructor(services: Services) {
     this.#services = services;
@@ -105,8 +111,15 @@ class OrchestratorService {
     // Register with Services container so ContextBuilderService can access it
     this.#services.set(ExternalServiceRegistry, this.#externalServiceRegistry);
 
-    // Initialize skill registry
+    // Initialize skill registry and register builtin skills
     this.#skillRegistry = new SkillRegistry();
+    registerBuiltinSkills(this.#skillRegistry);
+
+    // Register skill activation tools with the tool registry
+    const activationTools = createActivationTools(this.#skillRegistry);
+    for (const tool of activationTools) {
+      this.#toolRegistry.register(tool);
+    }
 
     // Initialize store (required by MemoryService)
     // KnexStore is lazily instantiated when MemoryService accesses it
@@ -122,6 +135,10 @@ class OrchestratorService {
       dimensions: 384,
     };
     await this.#memoryService.configure(embeddingConfig);
+
+    // Initialize log service
+    this.#logService = this.#services.get(LogService);
+    this.#logService.configure();
   };
 
   /**
@@ -175,6 +192,38 @@ class OrchestratorService {
     ) {
       throw new OrchestratorNotConfiguredError();
     }
+  };
+
+  /**
+   * Gets LangChain tools for active skills and registers them with the tool registry.
+   * This ensures skill tools are available to both the LLM and the risk gate.
+   */
+  #getActiveSkillTools = (
+    activeSkills: ActiveSkill[],
+    toolContext: { userId: string; conversationId: string; services: Services },
+  ): DynamicStructuredTool[] => {
+    if (!this.#skillRegistry || !this.#toolRegistry) {
+      return [];
+    }
+
+    const skillDefinitions = this.#skillRegistry.getActiveSkillDefinitions(activeSkills);
+    const skillTools: DynamicStructuredTool[] = [];
+
+    for (const skill of skillDefinitions) {
+      for (const tool of skill.tools) {
+        // Register with tool registry if not already registered (for risk gate)
+        if (!this.#toolRegistry.has(tool.id)) {
+          this.#toolRegistry.register(tool);
+        }
+        // Convert to LangChain tool
+        const registeredTool = this.#toolRegistry.get(tool.id);
+        if (registeredTool) {
+          skillTools.push(toLangChainTool(registeredTool, toolContext));
+        }
+      }
+    }
+
+    return skillTools;
   };
 
   /**
@@ -250,11 +299,31 @@ class OrchestratorService {
     });
 
     try {
-      // Build system prompt with context
+      // Load checkpoint state to get active skills (needed for both system prompt and tools)
+      let activeSkills: ActiveSkill[] = [];
+      try {
+        const checkpointTuple = await (this.#checkpointer as DatabaseCheckpointer).getTuple({
+          configurable: { thread_id: conversationId },
+        });
+        if (checkpointTuple?.checkpoint?.channel_values) {
+          const channelValues = checkpointTuple.checkpoint.channel_values as Record<string, unknown>;
+          activeSkills = (channelValues.activeSkills as ActiveSkill[]) ?? [];
+        }
+      } catch {
+        // No checkpoint state yet, no active skills
+      }
+
+      // Build system prompt with context and skills info
       const personality = this.#services.get(PersonalityService);
       const contextBuilder = this.#services.get(ContextBuilderService);
       const context = await contextBuilder.buildContext();
-      const systemPrompt = await personality.buildSystemPrompt(context);
+      let systemPrompt = await personality.buildSystemPrompt(context);
+
+      // Add available skills context to system prompt
+      const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
+      if (skillsContext) {
+        systemPrompt = `${systemPrompt}\n\n${skillsContext}`;
+      }
 
       // Get tools as LangChain tools
       const toolContext = {
@@ -263,11 +332,15 @@ class OrchestratorService {
         services: this.#services,
       };
       // These are guaranteed non-null by #ensureConfigured() above
-      const tools = toLangChainToolsFiltered(
+      const baseTools = toLangChainToolsFiltered(
         this.#toolRegistry as ToolRegistry,
         toolContext,
         createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
       );
+
+      // Add skill tools from active skills
+      const skillTools = this.#getActiveSkillTools(activeSkills, toolContext);
+      const tools = [...baseTools, ...skillTools];
 
       // Create and compile graph with tool registry for risk gate, memory service, and skill registry
       const graph = createOrchestratorGraph(
@@ -339,6 +412,17 @@ class OrchestratorService {
 
       // Check if graph halted for a tool approval interrupt
       if (result.interruptRequired && result.pendingToolCall) {
+        // Check if this is an error (e.g., unknown tool) rather than an approval request
+        if (result.pendingToolCall.isError) {
+          // Return an error message to the LLM by yielding an error chunk
+          // The error message is already in riskReason
+          yield {
+            type: 'error',
+            error: result.pendingToolCall.riskReason,
+          };
+          return;
+        }
+
         // Create the interrupt in the database
         const interrupt = await this.#interruptService.create({
           conversationId,
@@ -366,7 +450,7 @@ class OrchestratorService {
               activationRisk: skill.activationRisk,
               activationReason: skill.activationReason,
               activationParams: result.pendingSkillActivation.activationParams,
-              toolsSummary: skill.tools.map((t) => `${t.name}: ${t.description.split('\n')[0]}`).join('\n'),
+              toolsSummary: skill.tools.map((t) => `${t.id}: ${t.description.split('\n')[0]}`).join('\n'),
             },
             checkpointId: conversationId,
           });
@@ -422,6 +506,11 @@ class OrchestratorService {
         outputTokens: tokenUsage?.output_tokens,
       };
     } catch (error) {
+      // Log full error details for debugging
+      this.#logService?.error('orchestrator', 'Chat invocation failed', error, {
+        conversationId,
+      });
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       yield { type: 'error', error: errorMessage };
     }
@@ -527,11 +616,31 @@ class OrchestratorService {
     const conversationId = interrupt.conversationId;
 
     try {
-      // Build system prompt with context
+      // Load checkpoint state to get active skills (needed for both system prompt and tools)
+      let activeSkills: ActiveSkill[] = [];
+      try {
+        const checkpointTuple = await (this.#checkpointer as DatabaseCheckpointer).getTuple({
+          configurable: { thread_id: conversationId },
+        });
+        if (checkpointTuple?.checkpoint?.channel_values) {
+          const channelValues = checkpointTuple.checkpoint.channel_values as Record<string, unknown>;
+          activeSkills = (channelValues.activeSkills as ActiveSkill[]) ?? [];
+        }
+      } catch {
+        // No checkpoint state yet, no active skills
+      }
+
+      // Build system prompt with context and skills info
       const personality = this.#services.get(PersonalityService);
       const contextBuilder = this.#services.get(ContextBuilderService);
       const context = await contextBuilder.buildContext();
-      const systemPrompt = await personality.buildSystemPrompt(context);
+      let systemPrompt = await personality.buildSystemPrompt(context);
+
+      // Add available skills context to system prompt
+      const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
+      if (skillsContext) {
+        systemPrompt = `${systemPrompt}\n\n${skillsContext}`;
+      }
 
       // Get tools as LangChain tools
       const toolContext = {
@@ -539,11 +648,15 @@ class OrchestratorService {
         conversationId,
         services: this.#services,
       };
-      const tools = toLangChainToolsFiltered(
+      const baseTools = toLangChainToolsFiltered(
         this.#toolRegistry as ToolRegistry,
         toolContext,
         createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
       );
+
+      // Add skill tools from active skills
+      const skillTools = this.#getActiveSkillTools(activeSkills, toolContext);
+      const tools = [...baseTools, ...skillTools];
 
       // Create and compile graph
       const graph = createOrchestratorGraph(
@@ -667,6 +780,11 @@ class OrchestratorService {
         outputTokens: tokenUsage?.output_tokens,
       };
     } catch (error) {
+      // Log full error details for debugging
+      this.#logService?.error('orchestrator', 'Resume after approval failed', error, {
+        conversationId,
+      });
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       yield { type: 'error', error: errorMessage };
     }
@@ -682,11 +800,31 @@ class OrchestratorService {
     const conversationId = interrupt.conversationId;
 
     try {
-      // Build system prompt with context
+      // Load checkpoint state to get active skills (needed for both system prompt and tools)
+      let activeSkills: ActiveSkill[] = [];
+      try {
+        const checkpointTuple = await (this.#checkpointer as DatabaseCheckpointer).getTuple({
+          configurable: { thread_id: conversationId },
+        });
+        if (checkpointTuple?.checkpoint?.channel_values) {
+          const channelValues = checkpointTuple.checkpoint.channel_values as Record<string, unknown>;
+          activeSkills = (channelValues.activeSkills as ActiveSkill[]) ?? [];
+        }
+      } catch {
+        // No checkpoint state yet, no active skills
+      }
+
+      // Build system prompt with context and skills info
       const personality = this.#services.get(PersonalityService);
       const contextBuilder = this.#services.get(ContextBuilderService);
       const context = await contextBuilder.buildContext();
-      const systemPrompt = await personality.buildSystemPrompt(context);
+      let systemPrompt = await personality.buildSystemPrompt(context);
+
+      // Add available skills context to system prompt
+      const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
+      if (skillsContext) {
+        systemPrompt = `${systemPrompt}\n\n${skillsContext}`;
+      }
 
       // Get tools as LangChain tools
       const toolContext = {
@@ -694,11 +832,15 @@ class OrchestratorService {
         conversationId,
         services: this.#services,
       };
-      const tools = toLangChainToolsFiltered(
+      const baseTools = toLangChainToolsFiltered(
         this.#toolRegistry as ToolRegistry,
         toolContext,
         createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
       );
+
+      // Add skill tools from active skills
+      const skillTools = this.#getActiveSkillTools(activeSkills, toolContext);
+      const tools = [...baseTools, ...skillTools];
 
       // Create and compile graph
       const graph = createOrchestratorGraph(
@@ -809,6 +951,11 @@ class OrchestratorService {
         outputTokens: tokenUsage?.output_tokens,
       };
     } catch (error) {
+      // Log full error details for debugging
+      this.#logService?.error('orchestrator', 'Resume after turn limit failed', error, {
+        conversationId,
+      });
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       yield { type: 'error', error: errorMessage };
     }
@@ -869,13 +1016,37 @@ class OrchestratorService {
         conversationId,
         services: this.#services,
       };
-      const tools = toLangChainToolsFiltered(
+      const baseTools = toLangChainToolsFiltered(
         this.#toolRegistry as ToolRegistry,
         toolContext,
         createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
       );
 
-      // Create and compile graph
+      // Load checkpoint state to get existing active skills directly from checkpointer
+      let existingActiveSkills: ActiveSkill[] = [];
+      try {
+        const checkpointTuple = await (this.#checkpointer as DatabaseCheckpointer).getTuple({
+          configurable: { thread_id: conversationId },
+        });
+        if (checkpointTuple?.checkpoint?.channel_values) {
+          const channelValues = checkpointTuple.checkpoint.channel_values as Record<string, unknown>;
+          existingActiveSkills = (channelValues.activeSkills as ActiveSkill[]) ?? [];
+        }
+      } catch {
+        // No checkpoint state yet, no active skills
+      }
+
+      // Include tools from existing active skills + the skill being activated
+      const newActiveSkill: ActiveSkill = {
+        id: skillInfo.skillId,
+        activatedAt: new Date().toISOString(),
+        activationParams: skillInfo.activationParams,
+      };
+      const allActiveSkills = [...existingActiveSkills, newActiveSkill];
+      const skillTools = this.#getActiveSkillTools(allActiveSkills, toolContext);
+      const tools = [...baseTools, ...skillTools];
+
+      // Create and compile graph with skill tools included
       const graph = createOrchestratorGraph(
         this.#llm as ChatOpenAI,
         systemPrompt,
@@ -895,9 +1066,8 @@ class OrchestratorService {
         configurable: { thread_id: conversationId },
       });
 
-      // Get existing messages and state from checkpoint
+      // Get existing messages from checkpoint
       const checkpointMessages = currentState.values?.messages ?? [];
-      const existingActiveSkills = currentState.values?.activeSkills ?? [];
 
       // Use handleSkillActivationApproval to properly activate the skill
       const skillActivationUpdate = await handleSkillActivationApproval(
@@ -917,7 +1087,7 @@ class OrchestratorService {
         {
           conversationId,
           messages: checkpointMessages,
-          activeSkills: skillActivationUpdate.activeSkills ?? existingActiveSkills,
+          activeSkills: skillActivationUpdate.activeSkills ?? allActiveSkills,
           pendingSkillActivation: null,
           interruptRequired: false,
         },
@@ -966,7 +1136,7 @@ class OrchestratorService {
               activationRisk: skill.activationRisk,
               activationReason: skill.activationReason,
               activationParams: result.pendingSkillActivation.activationParams,
-              toolsSummary: skill.tools.map((t) => `${t.name}: ${t.description.split('\n')[0]}`).join('\n'),
+              toolsSummary: skill.tools.map((t) => `${t.id}: ${t.description.split('\n')[0]}`).join('\n'),
             },
             checkpointId: conversationId,
           });
@@ -1020,6 +1190,11 @@ class OrchestratorService {
         outputTokens: tokenUsage?.output_tokens,
       };
     } catch (error) {
+      // Log full error details for debugging
+      this.#logService?.error('orchestrator', 'Resume after skill activation failed', error, {
+        conversationId,
+      });
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       yield { type: 'error', error: errorMessage };
     }
@@ -1193,6 +1368,13 @@ class OrchestratorService {
       console.log(`Background invocation completed for trigger: ${triggerContext.triggerName}`);
       return conversationId;
     } catch (error) {
+      // Log full error details for debugging
+      this.#logService?.error('orchestrator', 'Background invocation failed', error, {
+        conversationId,
+        triggerId: triggerContext.triggerId,
+        metadata: { triggerName: triggerContext.triggerName },
+      });
+
       console.error(`Background invocation failed for trigger ${triggerContext.triggerName}:`, error);
       throw error;
     }

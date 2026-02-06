@@ -58,36 +58,6 @@ const DEFAULT_CONFIG: Required<TriggerServiceConfig> = {
 };
 
 // ============================================================================
-// Pre-installed Triggers
-// ============================================================================
-
-type PreinstalledTrigger = CreateTriggerInput & { preinstalled: true };
-
-const PREINSTALLED_TRIGGERS: PreinstalledTrigger[] = [
-  {
-    preinstalled: true,
-    name: 'daily-briefing',
-    goal: 'Provide the user with a daily briefing including calendar events for today, pending tasks, and any important reminders. Only notify if there is something meaningful to share.',
-    schedule: { type: 'cron', expression: '0 8 * * 1-5' }, // Weekdays at 8 AM
-    setupContext: 'Daily morning briefing to help the user start their day.',
-  },
-  {
-    preinstalled: true,
-    name: 'calendar-lookahead',
-    goal: 'Check for upcoming calendar events in the next hour. Notify the user if there is an event starting soon that they should prepare for.',
-    schedule: { type: 'cron', expression: '0 * * * *' }, // Every hour
-    setupContext: 'Hourly calendar check to ensure user is aware of upcoming events.',
-  },
-  {
-    preinstalled: true,
-    name: 'stale-followups',
-    goal: 'Review contacts and tasks for any follow-ups that are overdue or becoming stale. Notify the user if there are people they should reach out to.',
-    schedule: { type: 'cron', expression: '0 9 * * *' }, // Daily at 9 AM
-    setupContext: 'Daily check for relationship maintenance and stale follow-ups.',
-  },
-];
-
-// ============================================================================
 // TriggerService
 // ============================================================================
 
@@ -148,6 +118,32 @@ class TriggerService {
     return this.#scheduler.scheduledCount;
   }
 
+  /**
+   * Gets the scheduler state for debugging.
+   * Returns information about the running state and all scheduled triggers.
+   */
+  getSchedulerState = () => {
+    return {
+      running: this.#running,
+      scheduledCount: this.#scheduler.scheduledCount,
+      scheduledTriggers: this.#scheduler.getScheduledTriggers(),
+    };
+  };
+
+  /**
+   * Gets the scheduled fire time for a specific trigger.
+   */
+  getScheduledFireTime = (triggerId: string): Date | null => {
+    return this.#scheduler.getScheduledFireTime(triggerId);
+  };
+
+  /**
+   * Checks if a specific trigger is scheduled.
+   */
+  isScheduled = (triggerId: string): boolean => {
+    return this.#scheduler.isScheduled(triggerId);
+  };
+
   // ==========================================================================
   // Lifecycle
   // ==========================================================================
@@ -166,9 +162,6 @@ class TriggerService {
     }
 
     this.#running = true;
-
-    // Ensure pre-installed triggers exist
-    await this.#ensurePreinstalledTriggers();
 
     // Load and schedule all active triggers
     const activeTriggers = await getActiveTriggers(this.#db());
@@ -380,21 +373,6 @@ class TriggerService {
   // ==========================================================================
 
   /**
-   * Ensures pre-installed triggers exist.
-   */
-  #ensurePreinstalledTriggers = async (): Promise<void> => {
-    for (const preset of PREINSTALLED_TRIGGERS) {
-      const existing = await getTriggerByName(this.#db(), preset.name);
-      if (!existing) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { preinstalled: _preinstalled, ...input } = preset;
-        await this.create(input);
-        console.log(`Created pre-installed trigger: ${preset.name}`);
-      }
-    }
-  };
-
-  /**
    * Schedules the next invocation for a trigger.
    */
   #scheduleNext = async (trigger: Trigger): Promise<void> => {
@@ -569,6 +547,8 @@ export {
   TriggerServiceNotConfiguredError,
 } from './triggers.errors.ts';
 
+export type { ScheduledTriggerSnapshot } from './triggers.scheduler.ts';
+
 export {
   TriggerScheduler,
   calculateNextInvocation,
@@ -578,4 +558,4 @@ export {
 } from './triggers.scheduler.ts';
 
 export type { TriggerServiceConfig };
-export { TriggerService, PREINSTALLED_TRIGGERS };
+export { TriggerService };

@@ -3,7 +3,7 @@
 /**
  * GLaDOS Server
  *
- * Unified entry point that runs both the Telegram bot and Proactive Scheduler.
+ * Unified entry point that runs the Telegram bot.
  * This is the recommended way to deploy GLaDOS to a server.
  *
  * Usage:
@@ -18,7 +18,6 @@
  * Optional environment variables:
  *   GLADOS_DB_PATH             - Database path (default: ./glados.db)
  *   GLADOS_LLM_MODEL           - Model to use (default: anthropic/claude-sonnet-4)
- *   GLADOS_PROACTIVE_ENABLED   - Enable proactive scheduler (default: true)
  */
 
 import { Services } from '../services/services.ts';
@@ -30,7 +29,6 @@ import { ContextBuilderService } from '../context/context.ts';
 import { PersonalityService } from '../personality/personality.ts';
 import { TaskService } from '../tasks/tasks.ts';
 import { NotificationRouter } from '../notifications/notifications.ts';
-import { ProactiveScheduler } from '../proactive/proactive.ts';
 import { TelegramClientService } from '../clients/telegram/telegram.ts';
 import { loadConfig, isTelegramConfigured, isLLMConfigured } from '../config/config.ts';
 
@@ -41,7 +39,6 @@ import { loadConfig, isTelegramConfigured, isLLMConfigured } from '../config/con
 type ServerComponents = {
   services: Services;
   telegram: TelegramClientService | null;
-  scheduler: ProactiveScheduler | null;
   notificationRouter: NotificationRouter | null;
 };
 
@@ -82,7 +79,6 @@ const main = async (): Promise<void> => {
   const components: ServerComponents = {
     services: new Services(),
     telegram: null,
-    scheduler: null,
     notificationRouter: null,
   };
 
@@ -135,29 +131,6 @@ const main = async (): Promise<void> => {
 
     await components.telegram.start();
 
-    // Start proactive scheduler
-    const proactiveEnabled = config.proactive?.enabled ?? true;
-    if (proactiveEnabled) {
-      console.log();
-      console.log('Starting proactive scheduler...');
-      components.scheduler = new ProactiveScheduler(components.services);
-      components.scheduler.configure({
-        checkIntervalMs: config.proactive?.checkIntervalMs ?? 60000,
-        notificationRouter: components.notificationRouter,
-      });
-      await components.scheduler.start();
-
-      // List enabled checks
-      const checks = await components.scheduler.listChecks({ enabled: true });
-      console.log(`  Enabled checks: ${checks.length}`);
-      for (const check of checks) {
-        console.log(`    - ${check.name} (${check.schedule})`);
-      }
-    } else {
-      console.log();
-      console.log('Proactive scheduler disabled.');
-    }
-
     // Server ready
     console.log();
     console.log('=============');
@@ -165,9 +138,6 @@ const main = async (): Promise<void> => {
     console.log();
     console.log('Components running:');
     console.log('  - Telegram bot: listening for messages');
-    if (proactiveEnabled) {
-      console.log('  - Proactive scheduler: running background checks');
-    }
     console.log();
     console.log('Press Ctrl+C to stop.');
 
@@ -193,11 +163,6 @@ const main = async (): Promise<void> => {
   const shutdown = async (signal: string): Promise<void> => {
     console.log();
     console.log(`Received ${signal}, shutting down...`);
-
-    if (components.scheduler) {
-      console.log('  Stopping proactive scheduler...');
-      components.scheduler.stop();
-    }
 
     if (components.telegram) {
       console.log('  Stopping Telegram bot...');
