@@ -2,56 +2,102 @@
 
 This document captures high-impact improvements to make GLaDOS more "Jarvis-like" - more proactive, more capable, and more personally attuned.
 
-## 1. Email Integration
+## 1. Messaging Integration
 
 **Status:** Proposed
 **Effort:** Medium
 **Impact:** Very High
-**Leverage:** Most-used external service for personal productivity
+**Leverage:** Unified awareness across all communication channels
 
 ### Description
 
-Full email awareness and management capabilities:
+Channel-agnostic messaging awareness and management. Rather than siloed integrations, a unified abstraction over multiple messaging platforms.
+
+**Supported Channels:**
+- **Slack**: Workspaces, channels, DMs, threads
+- **Signal**: Personal and group chats
+- **Email**: Gmail, IMAP (lower priority, but included for completeness)
+- **Telegram**: Already exists as a client, extend to read other chats
+- **Future**: Discord, WhatsApp, SMS
 
 **Read Operations:**
-- Search inbox with semantic understanding
-- Summarize unread threads
+- Unified inbox across all channels
+- Search with semantic understanding
+- Summarize unread threads/conversations
 - Identify urgent vs non-urgent
-- Surface emails needing response
+- Surface messages needing response
+- Track conversation context (who is this person, history)
 
 **Write Operations (high-risk gated):**
-- Draft replies with full context (who is this person, conversation history)
-- Compose new emails with appropriate tone
-- Schedule sends
+- Draft replies with full context
+- Compose new messages with appropriate tone per channel
+- Schedule sends where supported
 
 **Intelligence:**
 - Follow-up tracking ("remind me if Bob doesn't reply in 3 days")
-- Triage suggestions ("this looks urgent" / "this can wait")
+- Cross-channel awareness ("Alice messaged you on Slack and Signal about the same thing")
 - Thread summarization for long conversations
-- Extract action items from emails
+- Extract action items from messages
+- Contact unification (same person across channels)
+
+### Unified Message Model
+
+```typescript
+type Message = {
+  id: string;
+  channel: 'slack' | 'signal' | 'email' | 'telegram';
+  channelId: string;            // workspace/chat/inbox identifier
+  threadId?: string;
+
+  from: {
+    id: string;
+    name: string;
+    contactId?: string;         // Link to unified contact
+  };
+
+  timestamp: Date;
+  content: string;
+  contentType: 'text' | 'rich' | 'attachment';
+
+  metadata: {
+    isRead: boolean;
+    isUrgent: boolean;
+    needsResponse: boolean;
+    mentionsMe: boolean;
+  };
+};
+```
 
 ### Why It Matters
 
-Email is where most professional communication happens. A personal assistant without email access is severely limited. This enables:
+Communication is fragmented across platforms. A personal assistant needs unified awareness:
 
-- "What emails need my attention today?"
-- "Draft a reply to Alice declining the meeting politely"
-- "Remind me if I don't hear back from the vendor by Friday"
+- "What messages need my attention?" (across all channels)
+- "Summarize my unread Slack and Signal messages"
+- "Draft a reply to Alice" (agent knows which channel to use)
+- "Remind me if I don't hear back from the vendor by Friday" (tracks across channels)
+- "Who's been trying to reach me while I was in meetings?"
 
 ### Implementation Approach
 
-1. Create `email` external service with provider abstraction
-2. Support IMAP (universal), Gmail API, Microsoft Graph
-3. Start read-only, add write with high-risk gating
-4. Store email metadata locally for semantic search
-5. Create email skill with triage and drafting tools
+1. Create `messaging` module with channel abstraction
+2. Implement channel adapters:
+   - Slack: Bot token + Web API
+   - Signal: signal-cli or libsignal bridge
+   - Email: IMAP/Gmail API (optional)
+3. Unified message storage with channel metadata
+4. Contact linking across channels
+5. Start read-only, add write with high-risk gating
+6. Feed messages into Event Log for reactive triggers
 
 ### Security Considerations
 
-- OAuth2 for Gmail/Microsoft (no password storage)
-- IMAP credentials in secure config
+- OAuth2 for Slack
+- Signal requires local key management (most sensitive)
+- Message content stored locally, never in cloud
 - Write operations require human approval
-- No automatic sending without explicit confirmation
+- Per-channel permissions (read-only vs read-write)
+- Clear audit trail of all sent messages
 
 ---
 
@@ -101,7 +147,167 @@ True personal assistants don't just remember—they *anticipate*. This transform
 
 ---
 
-## 3. Research & Execution Skills
+## 3. Event Log
+
+**Status:** Proposed
+**Effort:** Medium-High
+**Impact:** Very High
+**Leverage:** Foundational infrastructure enabling reactive behavior across the system
+
+### Description
+
+A unified event stream capturing all relevant changes from both internal systems and external sources. Rather than rebuilding context snapshots and computing deltas, the system maintains a chronological log of discrete events that agents can query.
+
+**Event Sources:**
+- **Calendar**: Events created, updated, cancelled, started, ended
+- **Tasks**: Created, updated, completed, delegated
+- **Location**: Arrivals, departures, zone transitions
+- **Communications**: Slack messages, emails received/sent (with metadata, not full content)
+- **Health**: Sleep sessions, exercise activities, heart rate anomalies
+- **System**: Triggers fired, conversations started, skills activated
+- **External**: Weather alerts, news mentions, price changes
+
+### Event Structure
+
+```typescript
+type Event = {
+  id: string;
+  type: EventType;              // 'calendar.created' | 'location.changed' | 'slack.message' | ...
+  category: EventCategory;      // 'calendar' | 'tasks' | 'location' | 'communication' | ...
+  timestamp: Date;
+  source: string;               // 'homeassistant' | 'slack' | 'internal' | ...
+
+  // Deduplication
+  externalId?: string;          // ID from source system
+  hash?: string;                // Content hash for duplicate detection
+
+  // Content
+  summary: string;              // Human-readable: "Meeting 'Standup' started"
+  data: Record<string, unknown>; // Full event payload
+
+  // Relations
+  entityId?: string;            // Related entity (contact, project, etc.)
+  conversationId?: string;      // If triggered by/during a conversation
+};
+```
+
+### Query Interface
+
+```typescript
+// Find all events in a time range
+eventLog.query({
+  since: new Date('2024-01-15T00:00:00Z'),
+  until: new Date('2024-01-15T23:59:59Z'),
+  categories: ['calendar', 'tasks'],
+  types: ['calendar.created', 'task.completed'],
+  limit: 100,
+});
+
+// Get events since a checkpoint (for background tasks)
+eventLog.since(lastProcessedEventId);
+
+// Subscribe to event patterns (for reactive triggers)
+eventLog.subscribe({
+  pattern: { category: 'location', type: 'location.arrived' },
+  handler: async (event) => { ... },
+});
+```
+
+### Why It Matters
+
+This is a fundamental shift from **polling** to **event-driven** architecture:
+
+| Current Approach | Event Log Approach |
+|------------------|-------------------|
+| Rebuild context, compute delta | Query events since last interaction |
+| Background tasks don't know what changed | `eventLog.since(checkpoint)` returns all changes |
+| Triggers based on time only | Triggers can react to event patterns |
+| Each service tracks its own changes | Unified view across all sources |
+
+**Enables:**
+- "What happened while I was asleep?" → Query events from midnight to now
+- Background task sees exactly what changed since last run
+- Trigger fires when specific event patterns occur (not just time-based)
+- Audit trail of everything that happened
+- Replay/debugging capabilities
+
+### Use Cases
+
+**Agent Awareness:**
+- "You received 3 Slack messages from Alice while in your meeting"
+- "Your location changed to 'Office' 20 minutes ago"
+- "2 calendar events were added to tomorrow's schedule"
+
+**Reactive Triggers:**
+- Fire when user arrives at a location
+- Fire when a high-priority email arrives
+- Fire when calendar becomes free after being busy
+
+**Background Task Context:**
+```typescript
+// In a background task
+const events = await eventLog.since(task.lastCheckpoint);
+const calendarChanges = events.filter(e => e.category === 'calendar');
+// Now the task knows exactly what calendar changes to process
+```
+
+### Implementation Approach
+
+1. Create `event-log` module with database table and service
+2. Define event type taxonomy (categories, types, schemas)
+3. Add event emission points to existing services (calendar, tasks, location)
+4. Build query API with efficient indexing
+5. Add subscription system for reactive triggers
+6. Create tools for agent to query event log
+7. Integrate with trigger system as new trigger dimension
+
+### Schema Design
+
+```sql
+CREATE TABLE events (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,           -- 'calendar.created'
+  category TEXT NOT NULL,       -- 'calendar'
+  timestamp TEXT NOT NULL,
+  source TEXT NOT NULL,
+  external_id TEXT,
+  hash TEXT,
+  summary TEXT NOT NULL,
+  data TEXT NOT NULL,           -- JSON
+  entity_id TEXT,
+  conversation_id TEXT,
+
+  UNIQUE(source, external_id),  -- Deduplication
+  INDEX idx_events_timestamp (timestamp),
+  INDEX idx_events_category (category, timestamp),
+  INDEX idx_events_type (type, timestamp)
+);
+```
+
+### Deduplication Strategy
+
+- **External ID**: If source provides an ID, use `(source, external_id)` as unique key
+- **Content Hash**: For events without external IDs, hash key fields to detect duplicates
+- **Time Window**: Same event type + entity within N seconds = likely duplicate
+- **Idempotent Writes**: `INSERT OR IGNORE` semantics
+
+### Retention & Cleanup
+
+- Keep detailed events for N days (configurable, default 30)
+- Summarize/aggregate old events into daily digests
+- Archive to cold storage if needed
+- Never delete events that are referenced by other records
+
+### Migration Path
+
+The Event Log could eventually replace:
+- Context delta tracking (query events instead of computing deltas)
+- Some memory storage (events are a form of episodic memory)
+- Ad-hoc change tracking in individual services
+
+---
+
+## 4. Research & Execution Skills
 
 **Status:** Proposed
 **Effort:** Medium
@@ -174,7 +380,223 @@ Each skill follows the existing pattern:
 
 ---
 
-## 4. Memory Evolution
+## 5. Tool Builder Skill
+
+**Status:** Proposed
+**Effort:** High
+**Impact:** Very High
+**Leverage:** Self-extending agent - compound capability growth over time
+
+### Description
+
+A meta-skill that allows the agent to create, test, and deploy new tools and skills. Instead of requiring developer intervention for every new capability, the agent can identify gaps, prototype solutions, and request approval to add them to its permanent toolset.
+
+**Core Capabilities:**
+- Sandboxed code execution environment with elevated access
+- Access to secrets (API keys, credentials) for integration development
+- Framework access (HTTP clients, database connectors, parsers)
+- Tool schema generation and validation
+- Testing harness for new tools
+- Approval workflow for promoting tools to production
+
+### Workflow
+
+```
+1. IDENTIFY: Agent recognizes a capability gap
+   "I need to fetch stock prices but don't have a tool for that"
+
+2. DESIGN: Agent designs the tool schema
+   - Input parameters (ticker symbol, date range)
+   - Output format (price history, current quote)
+   - Error handling
+   - Risk classification
+
+3. IMPLEMENT: Agent writes code in sandboxed environment
+   - Access to HTTP client, JSON parsing
+   - Can use stored API keys
+   - Iterative development with test runs
+
+4. TEST: Agent validates the tool works
+   - Unit tests with sample inputs
+   - Edge case handling
+   - Error scenarios
+
+5. PROPOSE: Agent submits tool for approval
+   - Shows implementation
+   - Demonstrates test results
+   - Explains use cases
+   - Declares risk level
+
+6. APPROVE: Human reviews and approves
+   - Code review
+   - Security assessment
+   - Approve / Request changes / Reject
+
+7. DEPLOY: Tool becomes available
+   - Added to tool registry
+   - Optionally bundled into a skill
+   - Available for future conversations
+```
+
+### Tool Builder Environment
+
+```typescript
+// Elevated sandbox with controlled access
+const toolBuilderEnv = {
+  // Code execution
+  runtime: 'isolated-vm',          // Sandboxed JavaScript/TypeScript
+  timeout: 30_000,                 // 30 second execution limit
+
+  // Network access (allowlisted)
+  http: {
+    allowedDomains: ['api.example.com', ...userConfigured],
+    rateLimited: true,
+  },
+
+  // Secret access (scoped)
+  secrets: {
+    available: ['STOCK_API_KEY', 'WEATHER_API_KEY'],
+    requestNew: async (name, purpose) => { /* approval flow */ },
+  },
+
+  // Persistence
+  storage: {
+    drafts: true,                  // Save work-in-progress tools
+    testData: true,                // Store test fixtures
+  },
+
+  // Frameworks
+  libraries: ['zod', 'date-fns', 'lodash'],
+};
+```
+
+### Tool Schema Format
+
+```typescript
+// Agent-generated tool definition
+const toolDefinition = {
+  name: 'getStockPrice',
+  description: 'Fetches current or historical stock prices',
+  version: '1.0.0',
+  author: 'agent',
+
+  // Zod schema for inputs
+  inputSchema: z.object({
+    ticker: z.string().describe('Stock ticker symbol'),
+    date: z.string().optional().describe('Date for historical price'),
+  }),
+
+  // Zod schema for outputs
+  outputSchema: z.object({
+    ticker: z.string(),
+    price: z.number(),
+    currency: z.string(),
+    timestamp: z.string(),
+  }),
+
+  // Risk classification
+  risk: 'low',                     // read-only, no side effects
+
+  // Implementation
+  implementation: `
+    async function execute({ ticker, date }) {
+      const response = await http.get(\`https://api.stocks.com/\${ticker}\`);
+      return { ticker, price: response.price, ... };
+    }
+  `,
+
+  // Test cases
+  tests: [
+    { input: { ticker: 'AAPL' }, expectedShape: { price: 'number' } },
+    { input: { ticker: 'INVALID' }, expectsError: true },
+  ],
+};
+```
+
+### Why It Matters
+
+This transforms the agent from a **static tool user** to a **dynamic capability builder**:
+
+| Without Tool Builder | With Tool Builder |
+|---------------------|-------------------|
+| "I can't do that, I don't have a tool" | "Let me build a tool for that" |
+| New integrations require developer time | Agent prototypes, human approves |
+| Capabilities frozen at deployment | Capabilities grow with usage |
+| Generic tools for everyone | Custom tools for your workflows |
+
+**Compound Growth:** Each approved tool makes the agent more capable, which helps it identify and build more tools.
+
+### Use Cases
+
+**API Integrations:**
+- "I notice you often ask about your Jira tickets. Let me build a Jira integration tool."
+- "You have a Notion workspace. I can create tools to read and update your databases."
+
+**Data Processing:**
+- "You frequently need CSV data analyzed. Let me build a specialized CSV tool."
+- "I'll create a tool that parses your bank statement format."
+
+**Custom Workflows:**
+- "You always check the same 5 things in the morning. Let me bundle these into a single tool."
+- "I'll create a deployment checker tool for your specific CI/CD setup."
+
+### Skill Bundle Management
+
+Beyond individual tools, the agent can compose skills:
+
+```typescript
+const skill = {
+  name: 'stock-tracker',
+  description: 'Track and analyze stock portfolios',
+  tools: ['getStockPrice', 'getStockHistory', 'analyzePortfolio'],
+  activationRisk: 'low',
+  requiredSecrets: ['STOCK_API_KEY'],
+};
+```
+
+### Security Model
+
+**Sandboxing:**
+- Isolated execution environment (no filesystem, no process spawning)
+- Network allowlist (only approved domains)
+- Resource limits (CPU, memory, time)
+
+**Secret Management:**
+- Agent can use pre-approved secrets
+- Requesting new secrets requires human approval
+- Secrets never exposed in tool output or logs
+
+**Approval Gates:**
+- All new tools require human approval before deployment
+- Code is visible and auditable
+- Risk level must be justified
+- Humans can revoke tools at any time
+
+**Audit Trail:**
+- All tool creations logged
+- All tool executions logged
+- Version history maintained
+
+### Implementation Approach
+
+1. Create `tool-builder` skill with elevated sandbox environment
+2. Design tool definition schema and validation
+3. Implement code execution sandbox (isolated-vm or similar)
+4. Build approval workflow with code review UI
+5. Create tool registry for agent-built tools
+6. Add skill bundling capabilities
+7. Implement secret request/approval flow
+
+### Challenges
+
+- **Security**: Sandboxing must be robust; this is highest-risk capability
+- **Quality**: Agent-generated code needs human review
+- **Maintenance**: Who updates agent-built tools when APIs change?
+- **Scope creep**: Clear boundaries on what agent can/cannot build
+
+---
+
+## 6. Memory Evolution
 
 **Status:** Proposed
 **Effort:** High
@@ -232,7 +654,7 @@ This is the difference between:
 
 ---
 
-## 5. Financial Awareness
+## 7. Financial Awareness
 
 **Status:** Proposed
 **Effort:** High
@@ -256,7 +678,7 @@ Optional financial tracking:
 
 ---
 
-## 6. Health & Wellness Tracking
+## 8. Health & Wellness Tracking
 
 **Status:** Proposed
 **Effort:** Medium
@@ -283,12 +705,14 @@ Holistic wellness awareness:
 
 | Idea | Effort | Impact | Recommended Order |
 |------|--------|--------|-------------------|
-| Email Integration | Medium | Very High | 1 - Biggest capability gap |
+| Messaging Integration | Medium | Very High | 1 - Unified communication awareness |
 | Anticipatory Intelligence | Medium | High | 2 - Differentiator |
-| Research & Execution Skills | Medium | High | 3 - Parallel track |
-| Memory Evolution | High | Very High | 4 - Long-term investment |
-| Health & Wellness | Medium | Medium | 5 - Nice to have |
-| Financial Awareness | High | Medium | 6 - Complex, sensitive |
+| Event Log | Medium-High | Very High | 3 - Foundational infrastructure |
+| Research & Execution Skills | Medium | High | 4 - Parallel track |
+| Tool Builder Skill | High | Very High | 5 - Self-extending agent |
+| Memory Evolution | High | Very High | 6 - Long-term investment |
+| Health & Wellness | Medium | Medium | 7 - Nice to have |
+| Financial Awareness | High | Medium | 8 - Complex, sensitive |
 
 **Note:** Daily Briefings don't need a dedicated feature - they're just triggers with goals like "Summarize my calendar, tasks, and weather for today." The existing trigger system + tools (`getAgenda`, `listUserTasks`, `weather.get`, `notify`) already provide this capability with full user control over content.
 
