@@ -1,6 +1,7 @@
 import type { AIMessage } from '@langchain/core/messages';
 
 import type { ToolRegistry, RiskLevel } from '../tools/tools.ts';
+import type { SkillRegistry } from '../skills/skills.ts';
 
 import type { OrchestratorState } from './orchestrator.state.ts';
 import type { ToolCallInfo } from './interrupts/interrupts.ts';
@@ -14,6 +15,8 @@ type PendingToolCall = {
   args: Record<string, unknown>;
   riskLevel: RiskLevel;
   riskReason: string;
+  /** If true, this is an error (e.g., unknown tool) not an approval request */
+  isError?: boolean;
 };
 
 /**
@@ -48,11 +51,15 @@ const DEFAULT_APPROVAL_LEVELS: RiskLevel[] = ['medium', 'high', 'critical'];
  * Returns which tool calls can proceed and which require approval.
  * Only the first high-risk tool call is returned as pending - subsequent
  * ones will be evaluated after the first is approved/denied.
+ *
+ * @param skillRegistry - Optional skill registry to provide better error messages
+ *                        for tools belonging to inactive skills
  */
 const evaluateRiskGate = (
   toolCalls: { id?: string; name: string; args: Record<string, unknown> }[],
   toolRegistry: ToolRegistry,
   approvalLevels: RiskLevel[] = DEFAULT_APPROVAL_LEVELS,
+  skillRegistry?: SkillRegistry,
 ): RiskGateResult => {
   const approved: RiskGateResult['approvedToolCalls'] = [];
   let pending: PendingToolCall | null = null;
@@ -65,14 +72,59 @@ const evaluateRiskGate = (
     const tool = toolRegistry.get(toolCall.name);
 
     if (!tool) {
-      // Unknown tool - treat as high risk
+      // Unknown tool - this is an error, not an approval request
+      // Set as pending with isError flag so it returns an error to the LLM
       if (!pending) {
+        // Check if this tool belongs to an inactive skill
+        let errorMessage: string;
+        if (skillRegistry) {
+          // First try direct lookup
+          let skill = skillRegistry.findSkillByToolId(toolCall.name);
+
+          // If not found and name contains a colon or dot, try converting to underscore format
+          // LLMs sometimes hallucinate "skillId:toolName" or "skillId.toolName" instead of "skillId_toolName"
+          let correctedName: string | null = null;
+          if (!skill && (toolCall.name.includes(':') || toolCall.name.includes('.'))) {
+            correctedName = toolCall.name.replace(/[:.]/, '_');
+            skill = skillRegistry.findSkillByToolId(correctedName);
+          }
+
+          if (skill) {
+            const actualToolName = correctedName ?? toolCall.name;
+            const wrongFormatHint = correctedName
+              ? ` Note: You used "${toolCall.name}" but the correct format is "${correctedName}" (underscore separator).`
+              : '';
+            errorMessage =
+              `Tool "${actualToolName}" belongs to the "${skill.name}" skill which is not currently active. ` +
+              `You must first activate the skill by calling "activate_${skill.id}", wait for the activation ` +
+              `to complete, then call the tool in a subsequent response.${wrongFormatHint}`;
+          } else {
+            // Check if it looks like a skill tool format but we can't identify the skill
+            const wrongFormatHint =
+              toolCall.name.includes(':') || toolCall.name.includes('.')
+                ? ` Note: Tool names use underscores as separators (e.g., "skillId_toolName").`
+                : '';
+            errorMessage =
+              `Unknown tool "${toolCall.name}". This tool does not exist.${wrongFormatHint} ` +
+              `Use skills.list_skills to see available tools, or activate a skill first if needed.`;
+          }
+        } else {
+          const wrongFormatHint =
+            toolCall.name.includes(':') || toolCall.name.includes('.')
+              ? ` Note: Tool names use underscores as separators (e.g., "skillId_toolName").`
+              : '';
+          errorMessage =
+            `Unknown tool "${toolCall.name}". This tool does not exist.${wrongFormatHint} ` +
+            `Use skills.list_skills to see available tools, or activate a skill first if needed.`;
+        }
+
         pending = {
           id,
           name: toolCall.name,
           args: toolCall.args,
           riskLevel: 'high',
-          riskReason: 'Unknown tool - requires approval',
+          riskReason: errorMessage,
+          isError: true,
         };
       }
       continue;
@@ -116,7 +168,11 @@ const evaluateRiskGate = (
  * against the risk policy. Low-risk tools pass through immediately,
  * while higher-risk tools trigger an interrupt for user approval.
  */
-const createRiskGateNode = (toolRegistry: ToolRegistry, approvalLevels: RiskLevel[] = DEFAULT_APPROVAL_LEVELS) => {
+const createRiskGateNode = (
+  toolRegistry: ToolRegistry,
+  approvalLevels: RiskLevel[] = DEFAULT_APPROVAL_LEVELS,
+  skillRegistry?: SkillRegistry,
+) => {
   return async (state: OrchestratorState): Promise<Partial<OrchestratorState>> => {
     const lastMessage = state.messages[state.messages.length - 1];
 
@@ -153,7 +209,7 @@ const createRiskGateNode = (toolRegistry: ToolRegistry, approvalLevels: RiskLeve
     const toolsToEvaluate = toolCalls.filter((tc) => !approvedNames.has(tc.name));
 
     // Evaluate only the non-approved tool calls
-    const result = evaluateRiskGate(toolsToEvaluate, toolRegistry, approvalLevels);
+    const result = evaluateRiskGate(toolsToEvaluate, toolRegistry, approvalLevels, skillRegistry);
 
     // Merge with any existing approved calls
     const mergedApproved = [...existingApproved];

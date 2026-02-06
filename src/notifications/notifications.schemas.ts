@@ -62,9 +62,8 @@ const notificationSchema = z.object({
   actions: z.array(notificationActionSchema).default([]),
 
   // Source tracking
-  sourceType: z.enum(['proactive_check', 'task', 'user', 'system']).optional(),
+  sourceType: z.enum(['trigger', 'task', 'user', 'system']).optional(),
   sourceId: z.string().optional(),
-  proactiveRunId: z.string().optional(),
 
   // Metadata
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -86,9 +85,8 @@ const createNotificationInputSchema = z.object({
   body: z.string().min(1),
   urgency: urgencySchema.optional().default('low'),
   actions: z.array(notificationActionSchema).optional().default([]),
-  sourceType: z.enum(['proactive_check', 'task', 'user', 'system']).optional(),
+  sourceType: z.enum(['trigger', 'task', 'user', 'system']).optional(),
   sourceId: z.string().optional(),
-  proactiveRunId: z.string().optional(),
   expiresAt: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -131,7 +129,6 @@ const notificationRowSchema = z.object({
   actions: z.string().nullable(), // JSON
   source_type: z.string().nullable(),
   source_id: z.string().nullable(),
-  proactive_run_id: z.string().nullable(),
   metadata: z.string().nullable(), // JSON
   created_at: z.string(),
   updated_at: z.string(),

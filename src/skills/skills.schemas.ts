@@ -110,6 +110,7 @@ type ActiveSkill = z.infer<typeof activeSkillSchema>;
 const pendingSkillActivationSchema = z.object({
   skillId: z.string(),
   activationParams: z.unknown().optional(),
+  toolCallId: z.string(),
 });
 
 type PendingSkillActivation = z.infer<typeof pendingSkillActivationSchema>;

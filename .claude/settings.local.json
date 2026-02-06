@@ -53,7 +53,9 @@
       "WebFetch(domain:docs.mem0.ai)",
       "WebFetch(domain:www.letta.com)",
       "WebFetch(domain:www.getzep.com)",
-      "Bash(pnpm prettier:*)"
+      "Bash(pnpm prettier:*)",
+      "Bash(python3:*)",
+      "Bash(pnpm vitest:*)"
     ]
   }
 }

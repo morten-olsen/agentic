@@ -1,3 +1,4 @@
+import { ToolMessage } from '@langchain/core/messages';
 import type { AIMessage } from '@langchain/core/messages';
 
 import type { OrchestratorState } from '../orchestrator/orchestrator.state.ts';
@@ -42,7 +43,7 @@ const getSkillIdFromToolName = (toolName: string): string => {
  * Checks if the pending tool call is the deactivate_skill tool.
  */
 const isDeactivateSkillTool = (toolName: string): boolean => {
-  return toolName === 'deactivate_skill' || toolName === 'DeactivateSkill';
+  return toolName === 'skills.deactivate_skill' || toolName === 'deactivate_skill' || toolName === 'DeactivateSkill';
 };
 
 /**
@@ -55,7 +56,7 @@ const formatSkillActivationPrompt = (skill: SkillDefinition): string => {
     skill.activationReason,
     '',
     '**Capabilities that will be unlocked:**',
-    ...skill.tools.map((t) => `- ${t.name}: ${t.description.split('\n')[0]}`),
+    ...skill.tools.map((t) => `- ${t.id}: ${t.description.split('\n')[0]}`),
     '',
     'Do you want to allow this?',
   ];
@@ -69,6 +70,7 @@ const activateSkill = async (
   state: OrchestratorState,
   skill: SkillDefinition,
   params: unknown,
+  toolCallId: string,
   skillRegistry: SkillRegistry,
   services: unknown,
 ): Promise<Partial<OrchestratorState>> => {
@@ -82,7 +84,16 @@ const activateSkill = async (
     const result = await skill.onActivate(params, context);
     if (!result.success) {
       // Activation failed - return error in messages
+      const errorMessage = new ToolMessage({
+        tool_call_id: toolCallId,
+        content: JSON.stringify({
+          activated: false,
+          message: result.error ?? 'Skill activation failed',
+          skillId: skill.id,
+        }),
+      });
       return {
+        messages: [errorMessage],
         pendingToolCall: null,
         pendingSkillActivation: null,
       };
@@ -98,7 +109,18 @@ const activateSkill = async (
     additionalContext,
   };
 
+  // Create the tool response message
+  const responseMessage = new ToolMessage({
+    tool_call_id: toolCallId,
+    content: JSON.stringify({
+      activated: true,
+      message: `${skill.name} skill activated. You now have access to: ${skill.tools.map((t) => t.id).join(', ')}`,
+      skillId: skill.id,
+    }),
+  });
+
   return {
+    messages: [responseMessage],
     activeSkills: [...state.activeSkills, activeSkill],
     pendingToolCall: null,
     pendingSkillActivation: null,
@@ -111,6 +133,7 @@ const activateSkill = async (
 const deactivateSkill = async (
   state: OrchestratorState,
   skillId: string,
+  toolCallId: string,
   skillRegistry: SkillRegistry,
   services: unknown,
 ): Promise<Partial<OrchestratorState>> => {
@@ -128,7 +151,18 @@ const deactivateSkill = async (
   // Remove skill from active skills
   const activeSkills = state.activeSkills.filter((s) => s.id !== skillId);
 
+  // Create the tool response message
+  const responseMessage = new ToolMessage({
+    tool_call_id: toolCallId,
+    content: JSON.stringify({
+      deactivated: true,
+      message: `Skill ${skillId} has been deactivated`,
+      skillId,
+    }),
+  });
+
   return {
+    messages: [responseMessage],
     activeSkills,
     pendingToolCall: null,
   };
@@ -156,6 +190,7 @@ const createSkillActivationNode = (skillRegistry: SkillRegistry, services: unkno
     // Find skill-related tool calls
     for (const toolCall of toolCalls) {
       const toolName = toolCall.name;
+      const toolCallId = toolCall.id ?? `call_${Date.now()}`;
 
       // Handle skill activation
       if (isSkillActivationTool(toolName)) {
@@ -163,14 +198,34 @@ const createSkillActivationNode = (skillRegistry: SkillRegistry, services: unkno
         const skill = skillRegistry.get(skillId);
 
         if (!skill) {
-          // Unknown skill - let the tool execution handle the error
-          continue;
+          // Unknown skill - return error message
+          const errorMessage = new ToolMessage({
+            tool_call_id: toolCallId,
+            content: JSON.stringify({
+              activated: false,
+              message: `Unknown skill: ${skillId}`,
+              skillId,
+            }),
+          });
+          return {
+            messages: [errorMessage],
+            pendingToolCall: null,
+          };
         }
 
         // Check if already active
         if (skillRegistry.isActive(skillId, state.activeSkills)) {
           // Return result indicating already active
+          const alreadyActiveMessage = new ToolMessage({
+            tool_call_id: toolCallId,
+            content: JSON.stringify({
+              activated: true,
+              message: `${skill.name} skill is already active`,
+              skillId: skill.id,
+            }),
+          });
           return {
+            messages: [alreadyActiveMessage],
             pendingToolCall: null,
           };
         }
@@ -183,6 +238,7 @@ const createSkillActivationNode = (skillRegistry: SkillRegistry, services: unkno
             pendingSkillActivation: {
               skillId: skill.id,
               activationParams: toolCall.args,
+              toolCallId,
             },
             // Store info for the orchestrator to create the interrupt
             currentInterrupt: null,
@@ -190,7 +246,7 @@ const createSkillActivationNode = (skillRegistry: SkillRegistry, services: unkno
         }
 
         // Low/medium risk - activate immediately
-        return await activateSkill(state, skill, toolCall.args, skillRegistry, services);
+        return await activateSkill(state, skill, toolCall.args, toolCallId, skillRegistry, services);
       }
 
       // Handle skill deactivation
@@ -199,16 +255,37 @@ const createSkillActivationNode = (skillRegistry: SkillRegistry, services: unkno
         const skillId = args.skillId;
 
         if (!skillId) {
-          continue;
+          const errorMessage = new ToolMessage({
+            tool_call_id: toolCallId,
+            content: JSON.stringify({
+              deactivated: false,
+              message: 'skillId is required',
+            }),
+          });
+          return {
+            messages: [errorMessage],
+            pendingToolCall: null,
+          };
         }
 
         // Check if actually active
         if (!skillRegistry.isActive(skillId, state.activeSkills)) {
-          continue;
+          const notActiveMessage = new ToolMessage({
+            tool_call_id: toolCallId,
+            content: JSON.stringify({
+              deactivated: false,
+              message: `Skill ${skillId} is not active`,
+              skillId,
+            }),
+          });
+          return {
+            messages: [notActiveMessage],
+            pendingToolCall: null,
+          };
         }
 
         // Deactivate immediately (no approval needed)
-        return await deactivateSkill(state, skillId, skillRegistry, services);
+        return await deactivateSkill(state, skillId, toolCallId, skillRegistry, services);
       }
     }
 
@@ -232,13 +309,22 @@ const handleSkillActivationApproval = async (
 
   const skill = skillRegistry.get(pending.skillId);
   if (!skill) {
+    const errorMessage = new ToolMessage({
+      tool_call_id: pending.toolCallId,
+      content: JSON.stringify({
+        activated: false,
+        message: `Unknown skill: ${pending.skillId}`,
+        skillId: pending.skillId,
+      }),
+    });
     return {
+      messages: [errorMessage],
       pendingSkillActivation: null,
       interruptRequired: false,
     };
   }
 
-  return await activateSkill(state, skill, pending.activationParams, skillRegistry, services);
+  return await activateSkill(state, skill, pending.activationParams, pending.toolCallId, skillRegistry, services);
 };
 
 export type { SkillActivationNodeResult };

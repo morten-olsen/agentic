@@ -137,6 +137,21 @@ class SkillRegistry {
   clear = (): void => {
     this.#skills.clear();
   };
+
+  /**
+   * Finds which skill a tool belongs to by tool ID.
+   * Returns the skill definition if found, null otherwise.
+   */
+  findSkillByToolId = (toolId: string): SkillDefinition | null => {
+    for (const skill of this.#skills.values()) {
+      for (const tool of skill.tools) {
+        if (tool.id === toolId) {
+          return skill;
+        }
+      }
+    }
+    return null;
+  };
 }
 
 export type { SkillsConfig };

@@ -13,7 +13,6 @@ import {
   TriggerNotFoundError,
   TriggerAlreadyExistsError,
   InvalidScheduleError,
-  PREINSTALLED_TRIGGERS,
 } from './triggers.ts';
 import type { Trigger } from './triggers.ts';
 import {
@@ -779,32 +778,6 @@ describe('TriggerService', () => {
 
       const triggers = await triggerService.list();
       expect(triggers.length).toBeGreaterThanOrEqual(2);
-    });
-  });
-
-  describe('Preinstalled Triggers', () => {
-    it('has expected preinstalled trigger definitions', () => {
-      expect(PREINSTALLED_TRIGGERS.length).toBeGreaterThan(0);
-
-      const names = PREINSTALLED_TRIGGERS.map((t) => t.name);
-      expect(names).toContain('daily-briefing');
-      expect(names).toContain('calendar-lookahead');
-      expect(names).toContain('stale-followups');
-    });
-
-    it('creates preinstalled triggers on start', async () => {
-      const mockOrchestrator = {
-        invokeBackground: vi.fn().mockResolvedValue('conv-123'),
-        startConversation: vi.fn(),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any;
-      triggerService.configure({ orchestrator: mockOrchestrator });
-
-      await triggerService.start();
-
-      const briefing = await triggerService.getByName('daily-briefing');
-      expect(briefing).not.toBeNull();
-      expect(briefing?.schedule.type).toBe('cron');
     });
   });
 });

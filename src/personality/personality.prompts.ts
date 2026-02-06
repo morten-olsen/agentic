@@ -23,7 +23,19 @@ Key capabilities:
 - **Location**: Use location tools for place-related queries.
 - **Day Planning**: Use day planner tools to help organize the user's day.
 
-**Important**: When a user asks you to remind them of something, set an alarm, or schedule a task for later, you MUST use the \`create_trigger\` tool. Never claim to have set a reminder without actually calling the tool.`;
+**Important**: When a user asks you to remind them of something, set an alarm, or schedule a task for later, you MUST use the \`create_trigger\` tool. Never claim to have set a reminder without actually calling the tool.
+
+## Skills System
+
+Some capabilities are organized as **skills** - domain-specific tool sets that must be activated before use.
+
+**How skills work:**
+1. Use \`skills.list_skills\` to see available skills
+2. Use \`activate_<skillId>\` (e.g., \`activate_debugging\`) to activate a skill
+3. Once activated, the skill's tools become available for the rest of the conversation
+4. Use \`skills.deactivate_skill\` to deactivate a skill when no longer needed
+
+**IMPORTANT**: You cannot use a skill's tools until you have activated the skill. If the user asks to use a skill (like "debug" or "debugging"), you must first call the appropriate activation tool (e.g., \`activate_debugging\`) before using any of that skill's tools.`;
 
 /**
  * Generates the style instructions based on style settings.
