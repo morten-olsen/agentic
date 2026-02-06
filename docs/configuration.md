@@ -63,6 +63,28 @@ All configuration options can be set via environment variables prefixed with `GL
 
 Both values are required to run the Telegram bot. The bot will only respond to messages from the configured owner ID.
 
+### API Server Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GLADOS_API_ENABLED` | `true` | Enable the HTTP API server |
+| `GLADOS_API_HOST` | `0.0.0.0` | Host to bind the API server |
+| `GLADOS_API_PORT` | `3000` | Port for the API server |
+| `GLADOS_API_TRUST_PROXY` | `false` | Trust proxy headers (set to true behind reverse proxy) |
+| `GLADOS_API_PUBLIC_URL` | *(none)* | Public URL for webhook callbacks (e.g., `https://your-server.example.com`) |
+
+The API server is required for receiving webhooks from external services like Oura Ring.
+
+### Oura Ring Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GLADOS_OURA_CLIENT_ID` | *(none)* | Oura API client ID |
+| `GLADOS_OURA_CLIENT_SECRET` | *(none)* | Oura API client secret or personal access token |
+| `GLADOS_OURA_WEBHOOK_SECRET` | *(none)* | Secret for verifying webhook signatures |
+
+All three values are required for Oura integration. Webhook subscriptions are automatically created when the server starts.
+
 ## LLM Provider Examples
 
 ### OpenRouter (Recommended)

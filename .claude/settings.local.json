@@ -56,7 +56,12 @@
       "Bash(pnpm prettier:*)",
       "Bash(python3:*)",
       "Bash(pnpm vitest:*)",
-      "Bash(xargs -I{} sh -c 'echo \"\"=== {} ===\"\" && grep -E \"\"^\\\\*\\\\*Status\\\\*\\\\*:\"\" {}')"
+      "Bash(xargs -I{} sh -c 'echo \"\"=== {} ===\"\" && grep -E \"\"^\\\\*\\\\*Status\\\\*\\\\*:\"\" {}')",
+      "WebFetch(domain:cloud.ouraring.com)",
+      "WebFetch(domain:support.ouraring.com)",
+      "WebFetch(domain:jsr.io)",
+      "WebFetch(domain:n8n.io)",
+      "WebFetch(domain:partnersupport.ouraring.com)"
     ]
   }
 }

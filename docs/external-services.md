@@ -61,6 +61,27 @@ To get a long-lived access token:
 5. Give it a name (e.g., "GLaDOS")
 6. Copy the token
 
+### Oura Ring
+
+```bash
+# Required for Oura Ring health tracking
+GLADOS_OURA_CLIENT_ID=<your-client-id>
+GLADOS_OURA_CLIENT_SECRET=<your-client-secret-or-personal-access-token>
+GLADOS_OURA_WEBHOOK_SECRET=<your-webhook-secret>
+
+# Required for webhook callbacks
+GLADOS_API_PUBLIC_URL=https://your-server.example.com
+```
+
+To set up Oura integration:
+1. Go to the [Oura Developer Portal](https://cloud.ouraring.com/oauth/applications)
+2. Create a new application
+3. Note the Client ID and Client Secret
+4. For personal use, you can also generate a Personal Access Token
+5. Set a webhook secret (any secure random string you choose)
+
+The webhook subscriptions are automatically created when the server starts.
+
 ## Available Tools
 
 ### ha_call_service
@@ -130,6 +151,92 @@ Toggle a switch:
 | `media_player` | `turn_on`, `turn_off`, `volume_set` | `volume_level` |
 | `scene` | `turn_on` | - |
 | `script` | `turn_on` | script-specific |
+
+### health.get_data
+
+Retrieve health and wellness data from connected wearables (Oura Ring).
+
+**Input:**
+```typescript
+{
+  type?: 'sleep' | 'activity' | 'readiness' | 'stress' | 'spo2' | 'workout';
+  startDate?: string;  // YYYY-MM-DD, defaults to 7 days ago
+  endDate?: string;    // YYYY-MM-DD, defaults to today
+  limit?: number;      // Max records to return (default: 7, max: 30)
+}
+```
+
+**Output:**
+```typescript
+{
+  records: Array<{
+    type: string;
+    date: string;
+    score: number | null;
+    provider: string;
+    data: Record<string, unknown>;
+  }>;
+}
+```
+
+**Examples:**
+
+Get last night's sleep:
+```typescript
+{ type: 'sleep', limit: 1 }
+```
+
+Get readiness scores for the past week:
+```typescript
+{ type: 'readiness' }
+```
+
+Get activity data for a specific range:
+```typescript
+{ type: 'activity', startDate: '2026-02-01', endDate: '2026-02-06' }
+```
+
+### health.get_sleep_summary
+
+Get a summary of sleep patterns over a date range.
+
+**Input:**
+```typescript
+{
+  startDate?: string;  // YYYY-MM-DD, defaults to 7 days ago
+  endDate?: string;    // YYYY-MM-DD, defaults to today
+}
+```
+
+**Output:**
+```typescript
+{
+  summary: {
+    averageDurationMinutes: number;
+    averageScore: number | null;
+    averageEfficiency: number | null;
+    totalNights: number;
+    trend: 'improving' | 'declining' | 'stable';
+  };
+  nights: Array<{
+    date: string;
+    durationMinutes: number;
+    score: number | null;
+  }>;
+}
+```
+
+**Examples:**
+
+Get sleep summary for the past week:
+```typescript
+{}
+```
+
+Get sleep summary for January:
+```typescript
+{ startDate: '2026-01-01', endDate: '2026-01-31' }
+```
 
 ## Adding a New External Service
 

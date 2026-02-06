@@ -20,6 +20,8 @@
  *   GLADOS_LLM_MODEL           - Model to use (default: anthropic/claude-sonnet-4)
  */
 
+import type { FastifyInstance } from 'fastify';
+
 import { Services } from '../services/services.ts';
 import { DatabaseService, createDatabaseService } from '../database/database.ts';
 import { UserModelService } from '../user-model/user-model.ts';
@@ -28,9 +30,11 @@ import { CalendarService } from '../calendar/calendar.ts';
 import { ContextBuilderService } from '../context/context.ts';
 import { PersonalityService } from '../personality/personality.ts';
 import { TaskService } from '../tasks/tasks.ts';
+import { HealthService } from '../health/health.ts';
 import { NotificationRouter } from '../notifications/notifications.ts';
 import { TelegramClientService } from '../clients/telegram/telegram.ts';
-import { loadConfig, isTelegramConfigured, isLLMConfigured } from '../config/config.ts';
+import { loadConfig, isTelegramConfigured, isLLMConfigured, isApiConfigured } from '../config/config.ts';
+import { createApiServer, startApiServer, setupOuraWebhooks } from '../api/api.ts';
 
 // ============================================================================
 // Types
@@ -40,6 +44,7 @@ type ServerComponents = {
   services: Services;
   telegram: TelegramClientService | null;
   notificationRouter: NotificationRouter | null;
+  api: FastifyInstance | null;
 };
 
 // ============================================================================
@@ -80,6 +85,7 @@ const main = async (): Promise<void> => {
     services: new Services(),
     telegram: null,
     notificationRouter: null,
+    api: null,
   };
 
   try {
@@ -98,6 +104,7 @@ const main = async (): Promise<void> => {
     components.services.get(ContextBuilderService);
     components.services.get(PersonalityService);
     components.services.get(TaskService);
+    components.services.get(HealthService);
 
     // Create notification router
     components.notificationRouter = new NotificationRouter(components.services);
@@ -106,6 +113,22 @@ const main = async (): Promise<void> => {
       quietHoursEnd: config.notifications?.quietHoursEnd ?? '07:00',
       maxInterruptionsPerHour: config.notifications?.maxInterruptionsPerHour ?? 5,
     });
+
+    // Start API server (if configured)
+    if (isApiConfigured()) {
+      console.log();
+      console.log('Starting API server...');
+      components.api = await createApiServer({
+        services: components.services,
+        config,
+      });
+
+      const apiInfo = await startApiServer(components.api, config);
+      console.log(`  API server listening on ${apiInfo.host}:${apiInfo.port}`);
+
+      // Set up Oura webhook subscriptions after API is listening
+      await setupOuraWebhooks({ services: components.services, config });
+    }
 
     // Start Telegram bot
     console.log();
@@ -138,6 +161,9 @@ const main = async (): Promise<void> => {
     console.log();
     console.log('Components running:');
     console.log('  - Telegram bot: listening for messages');
+    if (components.api) {
+      console.log(`  - API server: listening on port ${config.api.port}`);
+    }
     console.log();
     console.log('Press Ctrl+C to stop.');
 
@@ -163,6 +189,12 @@ const main = async (): Promise<void> => {
   const shutdown = async (signal: string): Promise<void> => {
     console.log();
     console.log(`Received ${signal}, shutting down...`);
+
+    // Stop API server first
+    if (components.api) {
+      console.log('  Stopping API server...');
+      await components.api.close();
+    }
 
     if (components.telegram) {
       console.log('  Stopping Telegram bot...');

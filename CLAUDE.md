@@ -34,6 +34,7 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 | `docs/getting-started.md` | Full setup guide |
 | `docs/configuration.md` | Configuration reference |
 | `docs/external-clients.md` | Building new interfaces (Telegram, etc.) |
+| `docs/external-services.md` | Integrating external services (Home Assistant, Oura) |
 | `docs/skills.md` | Skills system usage and development |
 | `docs/artifacts.md` | Server-side storage for large tool responses |
 | `docs/specs.md` | How to work with specifications |
@@ -107,7 +108,9 @@ glados/
     ├── notifications/     # Multi-channel notifications
     ├── skills/            # Domain-specific capabilities
     ├── artifacts/         # Large data storage
-    ├── external/          # External service integrations
+    ├── external/          # External service integrations (Home Assistant, Oura)
+    ├── health/            # Health data from wearables (Oura Ring)
+    ├── api/               # Fastify HTTP server for webhooks
     ├── cli/               # Interactive CLI
     └── clients/           # External client interfaces (Telegram)
 ```
@@ -128,7 +131,7 @@ See `docs/debugging.md` for detailed workflows.
 
 ## Current Status
 
-**Version**: 1.0 - Initial Implementation Complete (Phases 1-8) - 897+ passing tests
+**Version**: 1.0 - Initial Implementation Complete (Phases 1-8) - 1039+ passing tests
 
 All initial phases are complete:
 
@@ -140,6 +143,7 @@ All initial phases are complete:
 6. Notifications - Channels, Attention Budget
 7. Tool Discovery - Tool Sets, Discovery Agent
 8. Skills System - Gated domain-specific capabilities, approval flow
+9. Health Tracking - Oura Ring integration, webhook-based data ingestion
 
 Future phases are documented in `spec/future-phases.md`.
 

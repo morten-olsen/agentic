@@ -1,14 +1,17 @@
 import type { ToolRegistry, RegisteredTool } from '../tools/tools.ts';
 import type { SkillDefinition } from '../skills/skills.schemas.ts';
+import { getHealthDataTool, getSleepSummaryTool } from '../health/health.tools.ts';
 
 import { ExternalServiceRegistry } from './external.ts';
 import { homeassistantDefinition, haCallServiceTool } from './homeassistant/index.ts';
+import { ouraDefinition } from './oura/index.ts';
 
 /**
  * Registers all external service definitions with the registry.
  */
 const registerExternalServices = (registry: ExternalServiceRegistry): void => {
   registry.register(homeassistantDefinition);
+  registry.register(ouraDefinition);
 };
 
 /**
@@ -18,6 +21,10 @@ const registerExternalServices = (registry: ExternalServiceRegistry): void => {
  */
 const registerExternalServiceTools = (toolRegistry: ToolRegistry): void => {
   toolRegistry.register(haCallServiceTool);
+
+  // Register health tools
+  toolRegistry.register(getHealthDataTool);
+  toolRegistry.register(getSleepSummaryTool);
 };
 
 /**
