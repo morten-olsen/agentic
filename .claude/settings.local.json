@@ -55,7 +55,8 @@
       "WebFetch(domain:www.getzep.com)",
       "Bash(pnpm prettier:*)",
       "Bash(python3:*)",
-      "Bash(pnpm vitest:*)"
+      "Bash(pnpm vitest:*)",
+      "Bash(xargs -I{} sh -c 'echo \"\"=== {} ===\"\" && grep -E \"\"^\\\\*\\\\*Status\\\\*\\\\*:\"\" {}')"
     ]
   }
 }

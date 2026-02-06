@@ -2,6 +2,10 @@
 
 > External client for mobile interaction with GLaDOS
 
+**Version**: 1.0
+**Status**: Implemented
+**Dependencies**: Core Orchestrator (Phase 2), Interrupts (Phase 3)
+
 ## Overview
 
 The Telegram bot provides a mobile-friendly interface to GLaDOS, allowing users to interact with their personal assistant from anywhere. This is the first external client implementation, establishing patterns for future channels (Slack, Discord, web UI, etc.).

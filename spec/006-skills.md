@@ -3,7 +3,7 @@
 > Domain-specific capabilities with gated activation
 
 **Version**: 1.0
-**Status**: Draft
+**Status**: Implemented
 **Dependencies**: Tool Sets (Phase 7), Interrupts (Phase 3)
 
 ## Overview
@@ -820,17 +820,17 @@ type SkillsConfig = {
 
 ### Phase 1: Core Infrastructure
 
-- [ ] Skill schemas and types
-- [ ] SkillRegistry class
-- [ ] Basic activation/deactivation tools
-- [ ] Database migration
+- [x] Skill schemas and types
+- [x] SkillRegistry class
+- [x] Basic activation/deactivation tools
+- [x] Database migration
 
 ### Phase 2: Orchestrator Integration
 
-- [ ] Skill activation node
-- [ ] Interrupt flow for high-risk skills
-- [ ] Context injection for active skills
-- [ ] Tool aggregation
+- [x] Skill activation node
+- [x] Interrupt flow for high-risk skills
+- [x] Context injection for active skills
+- [x] Tool aggregation
 
 ### Phase 3: Built-in Skills
 
@@ -840,9 +840,9 @@ type SkillsConfig = {
 
 ### Phase 4: Testing & Documentation
 
-- [ ] Comprehensive test suite
-- [ ] Update CLAUDE.md
-- [ ] Usage documentation
+- [x] Comprehensive test suite
+- [x] Update CLAUDE.md
+- [x] Usage documentation
 
 ---
 

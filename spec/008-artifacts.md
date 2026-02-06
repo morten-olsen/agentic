@@ -3,7 +3,7 @@
 > Server-side storage for large data with context-efficient summaries
 
 **Version**: 1.0
-**Status**: Draft
+**Status**: Implemented
 **Dependencies**: Core Orchestrator, Tools (Phase 2)
 
 ## Overview
@@ -839,34 +839,34 @@ const compareRoutes = tool(
 
 ### Phase 1: Core Infrastructure
 
-- [ ] Artifact schemas and types
-- [ ] Database migration
-- [ ] ArtifactStore class (CRUD operations)
-- [ ] Expiration cleanup task
+- [x] Artifact schemas and types
+- [x] Database migration
+- [x] ArtifactStore class (CRUD operations)
+- [x] Expiration cleanup task
 
 ### Phase 2: Agent Tools
 
-- [ ] get_artifact tool
-- [ ] list_artifacts tool
-- [ ] Path extraction utility for JSON artifacts
+- [x] get_artifact tool
+- [x] list_artifacts tool
+- [x] Path extraction utility for JSON artifacts
 
 ### Phase 3: Tool Integration
 
-- [ ] Helper utilities for storing artifacts in tools
-- [ ] Standard response format helpers
-- [ ] Documentation for tool authors
+- [x] Helper utilities for storing artifacts in tools
+- [x] Standard response format helpers
+- [x] Documentation for tool authors
 
 ### Phase 4: Client Integration
 
-- [ ] CLI artifact commands
-- [ ] Telegram artifact handling
+- [x] CLI artifact commands
+- [x] Telegram artifact handling
 - [ ] Export functionality
 
 ### Phase 5: Testing & Documentation
 
-- [ ] Comprehensive test suite
-- [ ] Update CLAUDE.md
-- [ ] Usage documentation in docs/
+- [x] Comprehensive test suite
+- [x] Update CLAUDE.md
+- [x] Usage documentation in docs/
 
 ---
 

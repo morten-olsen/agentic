@@ -162,18 +162,20 @@ See [Configuration Guide](docs/configuration.md) for all options.
 | [Adding Tools](docs/adding-tools.md) | Extending agent capabilities |
 | [External Clients](docs/external-clients.md) | Building new interfaces |
 | [Coding Standards](docs/coding-standards.md) | TypeScript conventions |
-| [Specification](spec/agent.md) | Technical specification |
+| [Specification](spec/001-agent.md) | Technical specification |
 
 ## Project Status
 
-**Version 1.0** - Initial implementation complete with 580+ passing tests.
+**Version 1.0** - Initial implementation complete with 897+ passing tests.
 
 Implemented:
 - Foundation Layer (User Model, Contacts, Calendar, Location, Memory)
 - Orchestration (Tools, Interrupts, Agent Registry)
 - Task Management (User Tasks, Delegated Workflows)
-- Proactive Scheduler with built-in checks
+- Trigger System for scheduled agent invocations
 - Notification System with attention budget
+- Skills System for domain-specific capabilities
+- Artifacts System for large data storage
 - CLI and Telegram clients
 
 See [spec/future-phases.md](spec/future-phases.md) for planned features.

@@ -3,7 +3,7 @@
 > Integration with external services through environment-based configuration
 
 **Version**: 1.0
-**Status**: Draft
+**Status**: Implemented
 **Dependencies**: Configuration (Phase 1), Tools (Phase 2)
 
 ## Overview
@@ -584,23 +584,23 @@ export const homeassistantHandlers = [
 
 ### Phase 1: Core Infrastructure
 
-- [ ] Add homeassistant config to convict schema
-- [ ] ExternalServiceRegistry class
-- [ ] Service definition pattern
-- [ ] `requiredServices` field on ToolDefinition
+- [x] Add homeassistant config to convict schema
+- [x] ExternalServiceRegistry class
+- [x] Service definition pattern
+- [x] `requiredServices` field on ToolDefinition
 
 ### Phase 2: Home Assistant
 
-- [ ] Service definition
-- [ ] `ha_call_service` tool
-- [ ] Tool filtering integration in ToolRegistry
-- [ ] Basic tests
+- [x] Service definition
+- [x] `ha_call_service` tool
+- [x] Tool filtering integration in ToolRegistry
+- [x] Basic tests
 
 ### Phase 3: Testing & Documentation
 
-- [ ] Unit test suite
-- [ ] Integration tests with mock WebSocket
-- [ ] Update CLAUDE.md
+- [x] Unit test suite
+- [x] Integration tests with mock WebSocket
+- [x] Update CLAUDE.md
 
 ---
 

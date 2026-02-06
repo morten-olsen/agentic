@@ -3,8 +3,8 @@
 > Stateful triggers through continuation context
 
 **Version**: 1.0
-**Status**: Draft
-**Depends on**: `spec/003-triggers.md`
+**Status**: Implemented
+**Dependencies**: Trigger System (spec/003-triggers.md)
 
 ## Overview
 
@@ -417,26 +417,26 @@ The conversation debug tools should also show what continuation was available at
 
 ### Phase 1: Core Infrastructure
 
-- [ ] Database migration for `continuation` column
-- [ ] Schema updates (triggerSchema, updateTriggerInputSchema)
-- [ ] Store changes
+- [x] Database migration for `continuation` column
+- [x] Schema updates (triggerSchema, updateTriggerInputSchema)
+- [x] Store changes
 
 ### Phase 2: Service Integration
 
-- [ ] TriggerService.update handles continuation
-- [ ] TriggerService.#fire includes continuation in trigger context
-- [ ] Tool definition updated with continuation parameter
+- [x] TriggerService.update handles continuation
+- [x] TriggerService.#fire includes continuation in trigger context
+- [x] Tool definition updated with continuation parameter
 
 ### Phase 3: Agent Instructions
 
-- [ ] Update trigger context system prompt with continuation guidance
-- [ ] Test agent understanding and usage
+- [x] Update trigger context system prompt with continuation guidance
+- [x] Test agent understanding and usage
 
 ### Phase 4: Debugging Support
 
-- [ ] CLI commands to view trigger continuation
-- [ ] Continuation included in conversation debug output
-- [ ] Documentation updates
+- [x] CLI commands to view trigger continuation
+- [x] Continuation included in conversation debug output
+- [x] Documentation updates
 
 ---
 

@@ -2,8 +2,8 @@
 
 > Agent-managed scheduled invocations
 
-**Version**: 2.0 (Rewrite)
-**Status**: Draft
+**Version**: 2.0
+**Status**: Implemented
 **Replaces**: ProactiveScheduler, ProactiveChecks
 
 ## Overview
@@ -630,35 +630,35 @@ type TriggerConfig = {
 
 ### Phase 1: Core Infrastructure
 
-- [ ] Trigger schemas and types
-- [ ] Database migration
-- [ ] TriggerStore (CRUD operations)
-- [ ] Basic TriggerService (no scheduling)
+- [x] Trigger schemas and types
+- [x] Database migration
+- [x] TriggerStore (CRUD operations)
+- [x] Basic TriggerService (no scheduling)
 
 ### Phase 2: Scheduling
 
-- [ ] Cron expression parsing
-- [ ] Next invocation calculation
-- [ ] In-memory timer management
-- [ ] Startup loading and catch-up
+- [x] Cron expression parsing
+- [x] Next invocation calculation
+- [x] In-memory timer management
+- [x] Startup loading and catch-up
 
 ### Phase 3: Agent Integration
 
-- [ ] Trigger tools (create, update, delete, list)
-- [ ] Trigger context injection
-- [ ] Self-reference for ID-less updates
+- [x] Trigger tools (create, update, delete, list)
+- [x] Trigger context injection
+- [x] Self-reference for ID-less updates
 
 ### Phase 4: Notifications
 
-- [ ] Simplified notify tool
-- [ ] Telegram delivery
-- [ ] Basic notification store
+- [x] Simplified notify tool
+- [x] Telegram delivery
+- [x] Basic notification store
 
 ### Phase 5: Migration
 
-- [ ] Remove ProactiveScheduler
-- [ ] Create pre-installed triggers
-- [ ] Update CLI and Telegram entry points
+- [x] Remove ProactiveScheduler
+- [x] Create pre-installed triggers
+- [x] Update CLI and Telegram entry points
 
 ---
 
