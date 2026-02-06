@@ -278,6 +278,62 @@ const configSchema = convict({
       env: 'GLADOS_CONTEXT_CACHE_TTL_MINUTES',
     },
   },
+
+  api: {
+    enabled: {
+      doc: 'Enable the API server',
+      format: Boolean,
+      default: true,
+      env: 'GLADOS_API_ENABLED',
+    },
+    host: {
+      doc: 'API server host',
+      format: String,
+      default: '0.0.0.0',
+      env: 'GLADOS_API_HOST',
+    },
+    port: {
+      doc: 'API server port',
+      format: 'port',
+      default: 3000,
+      env: 'GLADOS_API_PORT',
+    },
+    trustProxy: {
+      doc: 'Trust X-Forwarded-* headers (set true behind reverse proxy)',
+      format: Boolean,
+      default: false,
+      env: 'GLADOS_API_TRUST_PROXY',
+    },
+    publicUrl: {
+      doc: 'Public URL for webhook callbacks (e.g., https://glados.example.com)',
+      format: String,
+      default: '',
+      env: 'GLADOS_API_PUBLIC_URL',
+    },
+  },
+
+  oura: {
+    clientId: {
+      doc: 'Oura OAuth2 client ID',
+      format: String,
+      default: '',
+      env: 'GLADOS_OURA_CLIENT_ID',
+    },
+    clientSecret: {
+      doc: 'Oura OAuth2 client secret',
+      format: String,
+      default: '',
+      env: 'GLADOS_OURA_CLIENT_SECRET',
+      sensitive: true,
+    },
+    webhookSecret: {
+      doc: 'Secret for verifying Oura webhook signatures',
+      format: String,
+      default: '',
+      env: 'GLADOS_OURA_WEBHOOK_SECRET',
+      sensitive: true,
+    },
+  },
 });
 
 /**
@@ -344,6 +400,18 @@ type Config = {
   context: {
     deltaCacheMaxEntries: number;
     deltaCacheTtlMinutes: number;
+  };
+  api: {
+    enabled: boolean;
+    host: string;
+    port: number;
+    trustProxy: boolean;
+    publicUrl: string;
+  };
+  oura: {
+    clientId: string;
+    clientSecret: string;
+    webhookSecret: string;
   };
 };
 
@@ -492,6 +560,25 @@ const isHomeAssistantConfigured = (): boolean => {
 };
 
 /**
+ * Checks if the API server is configured and enabled.
+ */
+const isApiConfigured = (): boolean => {
+  const config = getConfig();
+  return config.api.enabled && config.api.port > 0;
+};
+
+/**
+ * Checks if Oura is configured.
+ * Requires webhook secret for verifying incoming webhooks,
+ * and client ID for API calls (subscription management).
+ * Public URL is needed for webhook callbacks.
+ */
+const isOuraConfigured = (): boolean => {
+  const config = getConfig();
+  return !!(config.oura.webhookSecret && config.oura.clientId && config.api.publicUrl);
+};
+
+/**
  * Gets a formatted string of configuration for display (hides sensitive values).
  */
 const getConfigDisplay = (): string => {
@@ -543,6 +630,8 @@ export {
   isLLMConfigured,
   isTelegramConfigured,
   isHomeAssistantConfigured,
+  isApiConfigured,
+  isOuraConfigured,
   getConfigDisplay,
   getGlobalConfigDir,
   getUserConfigDir,
