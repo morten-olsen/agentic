@@ -12,6 +12,13 @@ import {
 import { NotifyNotAllowedError } from '../../triggers/triggers.errors.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // Create Trigger
 // ============================================================================
 
@@ -21,13 +28,13 @@ const createTriggerInputSchema = z.object({
   schedule: z
     .object({
       type: z.enum(['once', 'cron']),
-      at: z.string().optional().describe('ISO8601 datetime for one-time triggers'),
-      expression: z.string().optional().describe('Cron expression for recurring triggers'),
+      at: z.string().nullish().describe('ISO8601 datetime for one-time triggers'),
+      expression: z.string().nullish().describe('Cron expression for recurring triggers'),
     })
     .describe('When to trigger. For one-time: type="once" with at. For recurring: type="cron" with expression.'),
-  setupContext: z.string().optional().describe('Why this trigger is being created (for agent context)'),
-  maxInvocations: z.number().int().positive().optional().describe('For recurring: stop after N invocations'),
-  endsAt: z.string().optional().describe('For recurring: stop after this datetime (ISO8601)'),
+  setupContext: z.string().nullish().describe('Why this trigger is being created (for agent context)'),
+  maxInvocations: z.number().int().positive().nullish().describe('For recurring: stop after N invocations'),
+  endsAt: z.string().nullish().describe('For recurring: stop after this datetime (ISO8601)'),
 });
 
 const createTriggerOutputSchema = z.object({
@@ -98,9 +105,9 @@ Times are in the user's timezone.`,
         name: input.name,
         goal: input.goal,
         schedule,
-        setupContext: input.setupContext,
-        maxInvocations: input.maxInvocations,
-        endsAt: input.endsAt,
+        setupContext: nullToUndefined(input.setupContext),
+        maxInvocations: nullToUndefined(input.maxInvocations),
+        endsAt: nullToUndefined(input.endsAt),
       },
       context.conversationId,
     );
@@ -117,21 +124,21 @@ Times are in the user's timezone.`,
 // ============================================================================
 
 const updateTriggerInputSchema = z.object({
-  triggerId: z.string().optional().describe('Trigger ID. Optional when running from a trigger invocation.'),
-  name: z.string().min(1).optional().describe('New name'),
-  goal: z.string().min(1).optional().describe('New goal'),
+  triggerId: z.string().nullish().describe('Trigger ID. Optional when running from a trigger invocation.'),
+  name: z.string().min(1).nullish().describe('New name'),
+  goal: z.string().min(1).nullish().describe('New goal'),
   schedule: z
     .object({
       type: z.enum(['once', 'cron']),
-      at: z.string().optional(),
-      expression: z.string().optional(),
+      at: z.string().nullish(),
+      expression: z.string().nullish(),
     })
-    .optional()
+    .nullish()
     .describe('New schedule'),
-  setupContext: z.string().optional().describe('New setup context'),
-  maxInvocations: z.number().int().positive().nullable().optional().describe('New max invocations (null to remove)'),
-  endsAt: z.string().nullable().optional().describe('New end date (null to remove)'),
-  status: z.enum(['active', 'paused']).optional().describe('Pause or resume the trigger'),
+  setupContext: z.string().nullish().describe('New setup context'),
+  maxInvocations: z.number().int().positive().nullable().nullish().describe('New max invocations (null to remove)'),
+  endsAt: z.string().nullable().nullish().describe('New end date (null to remove)'),
+  status: z.enum(['active', 'paused']).nullish().describe('Pause or resume the trigger'),
   continuation: z.string().nullish().describe('Note for next invocation (null to clear)'),
 });
 
@@ -222,7 +229,7 @@ Use status='active' to resume a paused trigger.`,
 // ============================================================================
 
 const deleteTriggerInputSchema = z.object({
-  triggerId: z.string().optional().describe('Trigger ID. Optional when running from a trigger invocation.'),
+  triggerId: z.string().nullish().describe('Trigger ID. Optional when running from a trigger invocation.'),
 });
 
 const deleteTriggerOutputSchema = z.object({
@@ -279,8 +286,8 @@ invoked this conversation. When called from a user conversation, triggerId is re
 // ============================================================================
 
 const listTriggersInputSchema = z.object({
-  status: triggerStatusSchema.optional().describe('Filter by status'),
-  limit: z.number().int().positive().optional().default(50).describe('Maximum number of results'),
+  status: triggerStatusSchema.nullish().describe('Filter by status'),
+  limit: z.number().int().positive().nullish().default(50).describe('Maximum number of results'),
 });
 
 const listTriggersOutputSchema = z.object({
@@ -314,8 +321,8 @@ const listTriggersTool: ToolDefinition<ListTriggersInput, ListTriggersOutput, Li
   execute: async (input: ListTriggersInput, context: ToolContext): Promise<ListTriggersOutput> => {
     const triggerService = context.services.get(TriggerService);
     const triggers = await triggerService.list({
-      status: input.status,
-      limit: input.limit,
+      status: nullToUndefined(input.status),
+      limit: input.limit ?? 50,
     });
     return { triggers, count: triggers.length };
   },
@@ -328,7 +335,7 @@ const listTriggersTool: ToolDefinition<ListTriggersInput, ListTriggersOutput, Li
 const notifyToolInputSchema = notifyInputSchema.extend({
   title: z.string().max(100).describe('Short notification title (max 100 chars)'),
   body: z.string().max(1000).describe('Notification content (max 1000 chars)'),
-  urgency: z.enum(['low', 'medium', 'high', 'critical']).optional().default('medium').describe('Notification urgency'),
+  urgency: z.enum(['low', 'medium', 'high', 'critical']).nullish().default('medium').describe('Notification urgency'),
 });
 
 type NotifyInput = z.infer<typeof notifyToolInputSchema>;
@@ -383,7 +390,7 @@ user-initiated conversations, where you can respond directly).`,
     return triggerService.sendNotification({
       title: input.title,
       body: input.body,
-      urgency: input.urgency,
+      urgency: input.urgency ?? 'medium',
     });
   },
 };

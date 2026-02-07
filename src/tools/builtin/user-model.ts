@@ -14,15 +14,22 @@ import {
 } from '../../user-model/user-model.schemas.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // Identity
 // ============================================================================
 
 const updateIdentityInputSchema = z.object({
-  name: z.string().min(1).optional().describe("User's name"),
-  timezone: z.string().optional().describe('IANA timezone (e.g., "America/New_York", "Europe/Amsterdam", "UTC")'),
-  locale: z.string().optional().describe('Locale for formatting (e.g., "en-US", "nl-NL")'),
-  workingHours: workingHoursSchema.optional().describe('Working hours configuration'),
-  preferences: preferencesSchema.partial().optional().describe('User preferences'),
+  name: z.string().min(1).nullish().describe("User's name"),
+  timezone: z.string().nullish().describe('IANA timezone (e.g., "America/New_York", "Europe/Amsterdam", "UTC")'),
+  locale: z.string().nullish().describe('Locale for formatting (e.g., "en-US", "nl-NL")'),
+  workingHours: workingHoursSchema.nullish().describe('Working hours configuration'),
+  preferences: preferencesSchema.partial().nullish().describe('User preferences'),
 });
 
 const updateIdentityOutputSchema = identitySchema;
@@ -69,7 +76,13 @@ Timezone must be a valid IANA timezone identifier (e.g., "America/New_York", "Eu
   ],
   execute: async (input: UpdateIdentityInput, context: ToolContext): Promise<UpdateIdentityOutput> => {
     const userModel = context.services.get(UserModelService);
-    return userModel.updateIdentity(input);
+    return userModel.updateIdentity({
+      name: nullToUndefined(input.name),
+      timezone: nullToUndefined(input.timezone),
+      locale: nullToUndefined(input.locale),
+      workingHours: nullToUndefined(input.workingHours),
+      preferences: nullToUndefined(input.preferences),
+    });
   },
 };
 
@@ -105,7 +118,7 @@ const getIdentityTool: ToolDefinition<Record<string, never>, GetIdentityOutput> 
 
 // List Projects
 const listProjectsInputSchema = z.object({
-  status: projectStatusSchema.optional().describe('Filter by project status'),
+  status: projectStatusSchema.nullish().describe('Filter by project status'),
 });
 
 const listProjectsOutputSchema = z.object({
@@ -145,10 +158,10 @@ const listProjectsTool: ToolDefinition<ListProjectsInput, ListProjectsOutput> = 
 // Create Project
 const createProjectInputSchema = z.object({
   name: z.string().min(1).describe('Project name'),
-  description: z.string().optional().describe('Project description'),
-  status: projectStatusSchema.optional().describe('Project status'),
-  priority: projectPrioritySchema.optional().describe('Project priority'),
-  tags: z.array(z.string()).optional().describe('Tags for categorization'),
+  description: z.string().nullish().describe('Project description'),
+  status: projectStatusSchema.nullish().describe('Project status'),
+  priority: projectPrioritySchema.nullish().describe('Project priority'),
+  tags: z.array(z.string()).nullish().describe('Tags for categorization'),
 });
 
 const createProjectOutputSchema = projectSchema;
@@ -174,18 +187,24 @@ const createProjectTool: ToolDefinition<CreateProjectInput, CreateProjectOutput>
   examples: [{ input: { name: 'Website Redesign', priority: 'high' }, description: 'Create a high-priority project' }],
   execute: async (input: CreateProjectInput, context: ToolContext): Promise<CreateProjectOutput> => {
     const userModel = context.services.get(UserModelService);
-    return userModel.createProject(input);
+    return userModel.createProject({
+      name: input.name,
+      description: nullToUndefined(input.description),
+      status: nullToUndefined(input.status),
+      priority: nullToUndefined(input.priority),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 
 // Update Project
 const updateProjectInputSchema = z.object({
   id: z.string().describe('Project ID to update'),
-  name: z.string().optional().describe('New project name'),
-  description: z.string().optional().describe('New project description'),
-  status: projectStatusSchema.optional().describe('New project status'),
-  priority: projectPrioritySchema.optional().describe('New project priority'),
-  tags: z.array(z.string()).optional().describe('New tags'),
+  name: z.string().nullish().describe('New project name'),
+  description: z.string().nullish().describe('New project description'),
+  status: projectStatusSchema.nullish().describe('New project status'),
+  priority: projectPrioritySchema.nullish().describe('New project priority'),
+  tags: z.array(z.string()).nullish().describe('New tags'),
 });
 
 const updateProjectOutputSchema = projectSchema;
@@ -211,8 +230,13 @@ const updateProjectTool: ToolDefinition<UpdateProjectInput, UpdateProjectOutput>
   examples: [{ input: { id: '123', status: 'completed' }, description: 'Mark a project as completed' }],
   execute: async (input: UpdateProjectInput, context: ToolContext): Promise<UpdateProjectOutput> => {
     const userModel = context.services.get(UserModelService);
-    const { id, ...updates } = input;
-    return userModel.updateProject(id, updates);
+    return userModel.updateProject(input.id, {
+      name: nullToUndefined(input.name),
+      description: nullToUndefined(input.description),
+      status: nullToUndefined(input.status),
+      priority: nullToUndefined(input.priority),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 
@@ -258,7 +282,7 @@ const deleteProjectTool: ToolDefinition<DeleteProjectInput, DeleteProjectOutput>
 
 // List Goals
 const listGoalsInputSchema = z.object({
-  timeframe: goalTimeframeSchema.optional().describe('Filter by timeframe (short, medium, long)'),
+  timeframe: goalTimeframeSchema.nullish().describe('Filter by timeframe (short, medium, long)'),
 });
 
 const listGoalsOutputSchema = z.object({
@@ -299,8 +323,8 @@ const listGoalsTool: ToolDefinition<ListGoalsInput, ListGoalsOutput> = {
 const createGoalInputSchema = z.object({
   description: z.string().min(1).describe('Goal description'),
   timeframe: goalTimeframeSchema.describe('Goal timeframe: short (weeks), medium (months), long (years)'),
-  progress: z.string().optional().describe('Current progress status'),
-  relatedProjects: z.array(z.string()).optional().describe('IDs of related projects'),
+  progress: z.string().nullish().describe('Current progress status'),
+  relatedProjects: z.array(z.string()).nullish().describe('IDs of related projects'),
 });
 
 const createGoalOutputSchema = goalSchema;
@@ -331,17 +355,22 @@ const createGoalTool: ToolDefinition<CreateGoalInput, CreateGoalOutput> = {
   ],
   execute: async (input: CreateGoalInput, context: ToolContext): Promise<CreateGoalOutput> => {
     const userModel = context.services.get(UserModelService);
-    return userModel.createGoal(input);
+    return userModel.createGoal({
+      description: input.description,
+      timeframe: input.timeframe,
+      progress: nullToUndefined(input.progress),
+      relatedProjects: nullToUndefined(input.relatedProjects),
+    });
   },
 };
 
 // Update Goal
 const updateGoalInputSchema = z.object({
   id: z.string().describe('Goal ID to update'),
-  description: z.string().optional().describe('New goal description'),
-  timeframe: goalTimeframeSchema.optional().describe('New timeframe'),
-  progress: z.string().optional().describe('Updated progress status'),
-  relatedProjects: z.array(z.string()).optional().describe('Updated related project IDs'),
+  description: z.string().nullish().describe('New goal description'),
+  timeframe: goalTimeframeSchema.nullish().describe('New timeframe'),
+  progress: z.string().nullish().describe('Updated progress status'),
+  relatedProjects: z.array(z.string()).nullish().describe('Updated related project IDs'),
 });
 
 const updateGoalOutputSchema = goalSchema;
@@ -367,8 +396,12 @@ const updateGoalTool: ToolDefinition<UpdateGoalInput, UpdateGoalOutput> = {
   examples: [{ input: { id: '123', progress: '50% complete' }, description: 'Update goal progress' }],
   execute: async (input: UpdateGoalInput, context: ToolContext): Promise<UpdateGoalOutput> => {
     const userModel = context.services.get(UserModelService);
-    const { id, ...updates } = input;
-    return userModel.updateGoal(id, updates);
+    return userModel.updateGoal(input.id, {
+      description: nullToUndefined(input.description),
+      timeframe: nullToUndefined(input.timeframe),
+      progress: nullToUndefined(input.progress),
+      relatedProjects: nullToUndefined(input.relatedProjects),
+    });
   },
 };
 

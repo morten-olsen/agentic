@@ -114,8 +114,8 @@ For querying specific sections of artifact data, use domain-specific tools.`,
 // ============================================================================
 
 const listArtifactsInputSchema = z.object({
-  type: z.string().optional().describe('Filter by artifact type'),
-  messageId: z.string().optional().describe('Filter by message ID'),
+  type: z.string().nullish().describe('Filter by artifact type'),
+  messageId: z.string().nullish().describe('Filter by message ID'),
 });
 
 type ListArtifactsInput = z.input<typeof listArtifactsInputSchema>;

@@ -10,6 +10,13 @@ import {
 } from '../../utils/date-parser.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // Get Agenda
 // ============================================================================
 
@@ -62,7 +69,7 @@ const getAgendaTool: ToolDefinition<GetAgendaInput, GetAgendaOutput, GetAgendaRa
 // ============================================================================
 
 const getUpcomingEventsInputSchema = z.object({
-  hours: z.number().positive().optional().describe('Hours to look ahead. Defaults to 24.'),
+  hours: z.number().positive().nullish().describe('Hours to look ahead. Defaults to 24.'),
 });
 
 const getUpcomingEventsOutputSchema = z.object({
@@ -199,14 +206,14 @@ const createEventInputSchema = z.object({
     'End time. Accepts "tomorrow at 4pm", "in 2 hours", or ISO format "2026-02-01T16:00:00Z".',
   ),
   timezone: z.string().describe('Timezone (e.g., America/New_York)'),
-  description: z.string().optional().describe('Event description'),
-  location: z.string().optional().describe('Event location'),
-  allDay: z.boolean().optional().describe('Is this an all-day event?'),
-  attendees: z.array(attendeeSchema).optional().describe('Event attendees'),
-  requiresPrep: z.boolean().optional().describe('Does this event require preparation?'),
-  prepNotes: z.string().optional().describe('Preparation notes'),
-  travelTime: z.number().optional().describe('Travel time in minutes'),
-  tags: z.array(z.string()).optional().describe('Tags for categorization'),
+  description: z.string().nullish().describe('Event description'),
+  location: z.string().nullish().describe('Event location'),
+  allDay: z.boolean().nullish().describe('Is this an all-day event?'),
+  attendees: z.array(attendeeSchema).nullish().describe('Event attendees'),
+  requiresPrep: z.boolean().nullish().describe('Does this event require preparation?'),
+  prepNotes: z.string().nullish().describe('Preparation notes'),
+  travelTime: z.number().nullish().describe('Travel time in minutes'),
+  tags: z.array(z.string()).nullish().describe('Tags for categorization'),
 });
 
 const createEventOutputSchema = calendarEventSchema;
@@ -252,7 +259,20 @@ const createEventTool: ToolDefinition<CreateEventInput, CreateEventOutput, Creat
   ],
   execute: async (input: CreateEventInput, context: ToolContext): Promise<CreateEventOutput> => {
     const calendar = context.services.get(CalendarService);
-    return calendar.createEvent(input);
+    return calendar.createEvent({
+      title: input.title,
+      start: input.start,
+      end: input.end,
+      timezone: input.timezone,
+      description: nullToUndefined(input.description),
+      location: nullToUndefined(input.location),
+      allDay: nullToUndefined(input.allDay),
+      attendees: nullToUndefined(input.attendees),
+      requiresPrep: nullToUndefined(input.requiresPrep),
+      prepNotes: nullToUndefined(input.prepNotes),
+      travelTime: nullToUndefined(input.travelTime),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 
@@ -262,16 +282,16 @@ const createEventTool: ToolDefinition<CreateEventInput, CreateEventOutput, Creat
 
 const updateEventInputSchema = z.object({
   id: z.string().describe('Event ID to update'),
-  title: z.string().optional().describe('New event title'),
+  title: z.string().nullish().describe('New event title'),
   start: optionalFlexibleDatetimeSchema.describe('New start time. Accepts "tomorrow at 3pm" or ISO format.'),
   end: optionalFlexibleDatetimeSchema.describe('New end time. Accepts "tomorrow at 4pm" or ISO format.'),
-  description: z.string().optional().describe('New description'),
-  location: z.string().optional().describe('New location'),
-  allDay: z.boolean().optional().describe('Update all-day status'),
-  requiresPrep: z.boolean().optional().describe('Update prep requirement'),
-  prepNotes: z.string().optional().describe('Update prep notes'),
-  travelTime: z.number().optional().describe('Update travel time'),
-  tags: z.array(z.string()).optional().describe('Update tags'),
+  description: z.string().nullish().describe('New description'),
+  location: z.string().nullish().describe('New location'),
+  allDay: z.boolean().nullish().describe('Update all-day status'),
+  requiresPrep: z.boolean().nullish().describe('Update prep requirement'),
+  prepNotes: z.string().nullish().describe('Update prep notes'),
+  travelTime: z.number().nullish().describe('Update travel time'),
+  tags: z.array(z.string()).nullish().describe('Update tags'),
 });
 
 const updateEventOutputSchema = calendarEventSchema;
@@ -298,8 +318,18 @@ const updateEventTool: ToolDefinition<UpdateEventInput, UpdateEventOutput, Updat
   examples: [{ input: { id: '123', location: 'Conference Room B' }, description: 'Update event location' }],
   execute: async (input: UpdateEventInput, context: ToolContext): Promise<UpdateEventOutput> => {
     const calendar = context.services.get(CalendarService);
-    const { id, ...updates } = input;
-    return calendar.updateEvent(id, updates);
+    return calendar.updateEvent(input.id, {
+      title: nullToUndefined(input.title),
+      start: nullToUndefined(input.start),
+      end: nullToUndefined(input.end),
+      description: nullToUndefined(input.description),
+      location: nullToUndefined(input.location),
+      allDay: nullToUndefined(input.allDay),
+      requiresPrep: nullToUndefined(input.requiresPrep),
+      prepNotes: nullToUndefined(input.prepNotes),
+      travelTime: nullToUndefined(input.travelTime),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 

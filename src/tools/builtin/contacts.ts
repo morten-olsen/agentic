@@ -10,6 +10,13 @@ import {
 } from '../../contacts/contacts.schemas.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // Search Contacts
 // ============================================================================
 
@@ -56,8 +63,8 @@ const searchContactsTool: ToolDefinition<SearchContactsInput, SearchContactsOutp
 // ============================================================================
 
 const listContactsInputSchema = z.object({
-  relationshipType: relationshipTypeSchema.optional().describe('Filter by relationship type'),
-  importantOnly: z.boolean().optional().describe('Only return high/critical importance contacts'),
+  relationshipType: relationshipTypeSchema.nullish().describe('Filter by relationship type'),
+  importantOnly: z.boolean().nullish().describe('Only return high/critical importance contacts'),
 });
 
 const listContactsOutputSchema = z.object({
@@ -109,8 +116,8 @@ const listContactsTool: ToolDefinition<ListContactsInput, ListContactsOutput> = 
 // ============================================================================
 
 const getContactInputSchema = z.object({
-  id: z.string().optional().describe('Contact ID'),
-  email: z.string().email().optional().describe('Contact email'),
+  id: z.string().nullish().describe('Contact ID'),
+  email: z.string().email().nullish().describe('Contact email'),
 });
 
 const getContactOutputSchema = z.object({
@@ -160,19 +167,19 @@ const getContactTool: ToolDefinition<GetContactInput, GetContactOutput> = {
 
 const createContactInputSchema = z.object({
   name: z.string().min(1).describe('Contact name'),
-  email: z.string().email().optional().describe('Email address'),
-  phone: z.string().optional().describe('Phone number'),
-  organization: z.string().optional().describe('Company/organization'),
-  role: z.string().optional().describe("Contact's role/title"),
+  email: z.string().email().nullish().describe('Email address'),
+  phone: z.string().nullish().describe('Phone number'),
+  organization: z.string().nullish().describe('Company/organization'),
+  role: z.string().nullish().describe("Contact's role/title"),
   relationship: z
     .object({
       type: relationshipTypeSchema.describe('Type of relationship'),
-      context: z.string().optional().describe('Context for the relationship'),
-      importance: relationshipImportanceSchema.optional().describe('How important is this contact'),
+      context: z.string().nullish().describe('Context for the relationship'),
+      importance: relationshipImportanceSchema.nullish().describe('How important is this contact'),
     })
     .describe('Relationship information'),
-  notes: z.string().optional().describe('Notes about the contact'),
-  tags: z.array(z.string()).optional().describe('Tags for categorization'),
+  notes: z.string().nullish().describe('Notes about the contact'),
+  tags: z.array(z.string()).nullish().describe('Tags for categorization'),
 });
 
 const createContactOutputSchema = contactSchema;
@@ -207,7 +214,20 @@ const createContactTool: ToolDefinition<CreateContactInput, CreateContactOutput>
   ],
   execute: async (input: CreateContactInput, context: ToolContext): Promise<CreateContactOutput> => {
     const contactsService = context.services.get(ContactsService);
-    return contactsService.createContact(input);
+    return contactsService.createContact({
+      name: input.name,
+      email: nullToUndefined(input.email),
+      phone: nullToUndefined(input.phone),
+      organization: nullToUndefined(input.organization),
+      role: nullToUndefined(input.role),
+      relationship: {
+        type: input.relationship.type,
+        context: nullToUndefined(input.relationship.context),
+        importance: nullToUndefined(input.relationship.importance),
+      },
+      notes: nullToUndefined(input.notes),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 
@@ -217,14 +237,14 @@ const createContactTool: ToolDefinition<CreateContactInput, CreateContactOutput>
 
 const updateContactInputSchema = z.object({
   id: z.string().describe('Contact ID to update'),
-  name: z.string().optional().describe('New name'),
-  email: z.string().email().optional().describe('New email'),
-  phone: z.string().optional().describe('New phone'),
-  organization: z.string().optional().describe('New organization'),
-  role: z.string().optional().describe('New role'),
-  relationship: relationshipSchema.optional().describe('Updated relationship info'),
-  notes: z.string().optional().describe('Updated notes'),
-  tags: z.array(z.string()).optional().describe('Updated tags'),
+  name: z.string().nullish().describe('New name'),
+  email: z.string().email().nullish().describe('New email'),
+  phone: z.string().nullish().describe('New phone'),
+  organization: z.string().nullish().describe('New organization'),
+  role: z.string().nullish().describe('New role'),
+  relationship: relationshipSchema.nullish().describe('Updated relationship info'),
+  notes: z.string().nullish().describe('Updated notes'),
+  tags: z.array(z.string()).nullish().describe('Updated tags'),
 });
 
 const updateContactOutputSchema = contactSchema;
@@ -250,8 +270,16 @@ const updateContactTool: ToolDefinition<UpdateContactInput, UpdateContactOutput>
   examples: [{ input: { id: '123', role: 'Senior Engineer' }, description: 'Update contact role' }],
   execute: async (input: UpdateContactInput, context: ToolContext): Promise<UpdateContactOutput> => {
     const contactsService = context.services.get(ContactsService);
-    const { id, ...updates } = input;
-    return contactsService.updateContact(id, updates);
+    return contactsService.updateContact(input.id, {
+      name: nullToUndefined(input.name),
+      email: nullToUndefined(input.email),
+      phone: nullToUndefined(input.phone),
+      organization: nullToUndefined(input.organization),
+      role: nullToUndefined(input.role),
+      relationship: nullToUndefined(input.relationship),
+      notes: nullToUndefined(input.notes),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 

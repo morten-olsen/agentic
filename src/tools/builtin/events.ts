@@ -4,27 +4,34 @@ import type { ToolDefinition, ToolContext, ToolRegistry } from '../tools.ts';
 import { EventService, eventSchema } from '../../events/events.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // Query Events
 // ============================================================================
 
 const queryEventsInputSchema = z.object({
   types: z
     .array(z.string())
-    .optional()
+    .nullish()
     .describe(
       'Event types to filter. Supports wildcards: "calendar.*" matches all calendar events. ' +
         'Examples: ["calendar.event.created", "tasks.*", "triggers.fired"]',
     ),
-  since: z.string().optional().describe('Start of time range (ISO8601) or event ID to fetch events after'),
-  until: z.string().optional().describe('End of time range (ISO8601)'),
-  entityId: z.string().optional().describe('Filter by entity ID (e.g., a specific task or calendar event ID)'),
-  entityType: z.string().optional().describe('Filter by entity type (e.g., "calendar-event", "user-task", "trigger")'),
+  since: z.string().nullish().describe('Start of time range (ISO8601) or event ID to fetch events after'),
+  until: z.string().nullish().describe('End of time range (ISO8601)'),
+  entityId: z.string().nullish().describe('Filter by entity ID (e.g., a specific task or calendar event ID)'),
+  entityType: z.string().nullish().describe('Filter by entity type (e.g., "calendar-event", "user-task", "trigger")'),
   limit: z
     .number()
     .int()
     .min(1)
     .max(100)
-    .optional()
+    .nullish()
     .describe('Maximum number of events to return (default 20, max 100)'),
 });
 
@@ -77,11 +84,11 @@ const queryEventsTool: ToolDefinition<QueryEventsInput, QueryEventsOutput> = {
   execute: async (input: QueryEventsInput, context: ToolContext): Promise<QueryEventsOutput> => {
     const eventService = context.services.get(EventService);
     const result = await eventService.query({
-      types: input.types,
-      since: input.since,
-      until: input.until,
-      entityId: input.entityId,
-      entityType: input.entityType,
+      types: nullToUndefined(input.types),
+      since: nullToUndefined(input.since),
+      until: nullToUndefined(input.until),
+      entityId: nullToUndefined(input.entityId),
+      entityType: nullToUndefined(input.entityType),
       limit: input.limit ?? 20,
     });
 
@@ -119,9 +126,9 @@ const queryEventsTool: ToolDefinition<QueryEventsInput, QueryEventsOutput> = {
 // ============================================================================
 
 const getRecentChangesInputSchema = z.object({
-  hours: z.number().positive().optional().describe('How many hours back to look (default 24)'),
-  types: z.array(z.string()).optional().describe('Event types to filter. Supports wildcards like "calendar.*"'),
-  limit: z.number().int().min(1).max(50).optional().describe('Maximum number of events (default 10, max 50)'),
+  hours: z.number().positive().nullish().describe('How many hours back to look (default 24)'),
+  types: z.array(z.string()).nullish().describe('Event types to filter. Supports wildcards like "calendar.*"'),
+  limit: z.number().int().min(1).max(50).nullish().describe('Maximum number of events (default 10, max 50)'),
 });
 
 const getRecentChangesOutputSchema = z.object({
@@ -172,7 +179,7 @@ const getRecentChangesTool: ToolDefinition<GetRecentChangesInput, GetRecentChang
     const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
     const result = await eventService.query({
-      types: input.types,
+      types: nullToUndefined(input.types),
       since,
       limit: input.limit ?? 10,
     });
@@ -328,7 +335,7 @@ const cleanupEventsInputSchema = z.object({
     .number()
     .int()
     .min(1)
-    .optional()
+    .nullish()
     .describe('Days to retain (uses configured default if not specified)'),
 });
 

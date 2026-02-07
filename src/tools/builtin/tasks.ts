@@ -12,6 +12,13 @@ import {
 } from '../../tasks/tasks.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // Create User Task
 // ============================================================================
 
@@ -20,10 +27,10 @@ const createUserTaskInputSchema = z.object({
   trigger: flexibleTriggerInputSchema.describe(
     'When the task should trigger. Accepts natural language like "in 5 minutes", "tomorrow at 9am", or ISO format "2026-02-01T10:00:00Z". For advanced scheduling, use structured objects.',
   ),
-  relatedProjects: z.array(z.string()).optional().describe('Related project IDs'),
-  relatedContacts: z.array(z.string()).optional().describe('Related contact IDs'),
-  notes: z.string().optional().describe('Additional notes'),
-  tags: z.array(z.string()).optional().describe('Tags for categorization'),
+  relatedProjects: z.array(z.string()).nullish().describe('Related project IDs'),
+  relatedContacts: z.array(z.string()).nullish().describe('Related contact IDs'),
+  notes: z.string().nullish().describe('Additional notes'),
+  tags: z.array(z.string()).nullish().describe('Tags for categorization'),
 });
 
 const createUserTaskOutputSchema = userTaskSchema;
@@ -80,7 +87,14 @@ const createUserTaskTool: ToolDefinition<CreateUserTaskInput, CreateUserTaskOutp
   ],
   execute: async (input: CreateUserTaskInput, context: ToolContext): Promise<CreateUserTaskOutput> => {
     const taskService = context.services.get(TaskService);
-    return taskService.createUserTask(input);
+    return taskService.createUserTask({
+      description: input.description,
+      trigger: input.trigger,
+      relatedProjects: nullToUndefined(input.relatedProjects),
+      relatedContacts: nullToUndefined(input.relatedContacts),
+      notes: nullToUndefined(input.notes),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 
@@ -89,9 +103,9 @@ const createUserTaskTool: ToolDefinition<CreateUserTaskInput, CreateUserTaskOutp
 // ============================================================================
 
 const listUserTasksInputSchema = z.object({
-  status: userTaskStatusSchema.optional().describe('Filter by status'),
-  triggerType: z.string().optional().describe('Filter by trigger type'),
-  limit: z.number().positive().optional().describe('Maximum number of results'),
+  status: userTaskStatusSchema.nullish().describe('Filter by status'),
+  triggerType: z.string().nullish().describe('Filter by trigger type'),
+  limit: z.number().positive().nullish().describe('Maximum number of results'),
 });
 
 const listUserTasksOutputSchema = z.object({
@@ -123,7 +137,11 @@ const listUserTasksTool: ToolDefinition<ListUserTasksInput, ListUserTasksOutput>
   ],
   execute: async (input: ListUserTasksInput, context: ToolContext): Promise<ListUserTasksOutput> => {
     const taskService = context.services.get(TaskService);
-    const tasks = await taskService.listUserTasks(input);
+    const tasks = await taskService.listUserTasks({
+      status: nullToUndefined(input.status),
+      triggerType: nullToUndefined(input.triggerType),
+      limit: nullToUndefined(input.limit),
+    });
     return { tasks, count: tasks.length };
   },
 };
@@ -170,10 +188,10 @@ const completeUserTaskTool: ToolDefinition<CompleteUserTaskInput, CompleteUserTa
 const createDelegatedTaskInputSchema = z.object({
   description: z.string().min(1).describe('Task description'),
   steps: z.array(createStepInputSchema).min(1).describe('Steps to complete the task'),
-  userTaskId: z.string().optional().describe('Link to a user task if applicable'),
-  relatedProjects: z.array(z.string()).optional().describe('Related project IDs'),
-  relatedContacts: z.array(z.string()).optional().describe('Related contact IDs'),
-  tags: z.array(z.string()).optional().describe('Tags for categorization'),
+  userTaskId: z.string().nullish().describe('Link to a user task if applicable'),
+  relatedProjects: z.array(z.string()).nullish().describe('Related project IDs'),
+  relatedContacts: z.array(z.string()).nullish().describe('Related contact IDs'),
+  tags: z.array(z.string()).nullish().describe('Tags for categorization'),
 });
 
 const createDelegatedTaskOutputSchema = delegatedTaskSchema;
@@ -211,7 +229,14 @@ const createDelegatedTaskTool: ToolDefinition<CreateDelegatedTaskInput, CreateDe
   ],
   execute: async (input: CreateDelegatedTaskInput, context: ToolContext): Promise<CreateDelegatedTaskOutput> => {
     const taskService = context.services.get(TaskService);
-    return taskService.createTask(input);
+    return taskService.createTask({
+      description: input.description,
+      steps: input.steps,
+      userTaskId: nullToUndefined(input.userTaskId),
+      relatedProjects: nullToUndefined(input.relatedProjects),
+      relatedContacts: nullToUndefined(input.relatedContacts),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 
@@ -258,7 +283,7 @@ const getActiveTasksTool: ToolDefinition<GetActiveTasksInput, GetActiveTasksOutp
 
 const advanceTaskStepInputSchema = z.object({
   id: z.string().describe('Task ID'),
-  result: z.unknown().optional().describe('Result from the completed step'),
+  result: z.unknown().nullish().describe('Result from the completed step'),
 });
 
 const advanceTaskStepOutputSchema = delegatedTaskSchema;

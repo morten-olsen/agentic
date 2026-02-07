@@ -10,13 +10,20 @@ import {
 } from '../../notifications/notifications.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // List Notifications
 // ============================================================================
 
 const listNotificationsInputSchema = z.object({
-  status: notificationStatusSchema.optional().describe('Filter by status'),
-  urgency: urgencySchema.optional().describe('Filter by urgency'),
-  limit: z.number().positive().optional().describe('Maximum number of results'),
+  status: notificationStatusSchema.nullish().describe('Filter by status'),
+  urgency: urgencySchema.nullish().describe('Filter by urgency'),
+  limit: z.number().positive().nullish().describe('Maximum number of results'),
 });
 
 const listNotificationsOutputSchema = z.object({
@@ -49,7 +56,11 @@ const listNotificationsTool: ToolDefinition<ListNotificationsInput, ListNotifica
   ],
   execute: async (input: ListNotificationsInput, context: ToolContext): Promise<ListNotificationsOutput> => {
     const router = context.services.get(NotificationRouter);
-    const notifications = await router.listNotifications(input);
+    const notifications = await router.listNotifications({
+      status: nullToUndefined(input.status),
+      urgency: nullToUndefined(input.urgency),
+      limit: nullToUndefined(input.limit),
+    });
     return { notifications, count: notifications.length };
   },
 };
@@ -209,7 +220,7 @@ const snoozeNotificationTool: ToolDefinition<SnoozeNotificationInput, SnoozeNoti
 
 const setDndInputSchema = z.object({
   enabled: z.boolean().describe('Whether to enable DND mode'),
-  minutes: z.number().positive().optional().describe('Duration in minutes (if enabling)'),
+  minutes: z.number().positive().nullish().describe('Duration in minutes (if enabling)'),
 });
 
 const setDndOutputSchema = attentionBudgetSchema;

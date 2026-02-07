@@ -11,11 +11,18 @@ import {
 } from '../../location/location.schemas.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // List Locations
 // ============================================================================
 
 const listLocationsInputSchema = z.object({
-  type: locationTypeSchema.optional().describe('Filter by location type'),
+  type: locationTypeSchema.nullish().describe('Filter by location type'),
 });
 
 const listLocationsOutputSchema = z.object({
@@ -64,8 +71,8 @@ const listLocationsTool: ToolDefinition<ListLocationsInput, ListLocationsOutput>
 // ============================================================================
 
 const getLocationInputSchema = z.object({
-  id: z.string().optional().describe('Location ID'),
-  name: z.string().optional().describe('Location name'),
+  id: z.string().nullish().describe('Location ID'),
+  name: z.string().nullish().describe('Location name'),
 });
 
 const getLocationOutputSchema = z.object({
@@ -114,7 +121,7 @@ const getLocationTool: ToolDefinition<GetLocationInput, GetLocationOutput> = {
 // ============================================================================
 
 const getCurrentLocationInputSchema = z.object({
-  infer: z.boolean().optional().describe('Infer location from context if not explicitly set'),
+  infer: z.boolean().nullish().describe('Infer location from context if not explicitly set'),
 });
 
 const getCurrentLocationOutputSchema = currentLocationSchema;
@@ -204,11 +211,11 @@ const setCurrentLocationTool: ToolDefinition<SetCurrentLocationInput, SetCurrent
 const createLocationInputSchema = z.object({
   name: z.string().min(1).describe('Location name'),
   type: locationTypeSchema.describe('Type of location'),
-  coordinates: coordinatesSchema.optional().describe('GPS coordinates'),
-  address: addressSchema.optional().describe('Street address'),
-  timezone: z.string().optional().describe('Timezone for this location'),
-  isDefault: z.boolean().optional().describe('Make this the default for its type'),
-  tags: z.array(z.string()).optional().describe('Tags for categorization'),
+  coordinates: coordinatesSchema.nullish().describe('GPS coordinates'),
+  address: addressSchema.nullish().describe('Street address'),
+  timezone: z.string().nullish().describe('Timezone for this location'),
+  isDefault: z.boolean().nullish().describe('Make this the default for its type'),
+  tags: z.array(z.string()).nullish().describe('Tags for categorization'),
 });
 
 const createLocationOutputSchema = locationSchema;
@@ -239,7 +246,15 @@ const createLocationTool: ToolDefinition<CreateLocationInput, CreateLocationOutp
   ],
   execute: async (input: CreateLocationInput, context: ToolContext): Promise<CreateLocationOutput> => {
     const locationService = context.services.get(LocationService);
-    return locationService.createLocation(input);
+    return locationService.createLocation({
+      name: input.name,
+      type: input.type,
+      coordinates: nullToUndefined(input.coordinates),
+      address: nullToUndefined(input.address),
+      timezone: nullToUndefined(input.timezone),
+      isDefault: nullToUndefined(input.isDefault),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 
@@ -249,13 +264,13 @@ const createLocationTool: ToolDefinition<CreateLocationInput, CreateLocationOutp
 
 const updateLocationInputSchema = z.object({
   id: z.string().describe('Location ID to update'),
-  name: z.string().optional().describe('New name'),
-  type: locationTypeSchema.optional().describe('New type'),
-  coordinates: coordinatesSchema.optional().describe('New coordinates'),
-  address: addressSchema.optional().describe('New address'),
-  timezone: z.string().optional().describe('New timezone'),
-  isDefault: z.boolean().optional().describe('Update default status'),
-  tags: z.array(z.string()).optional().describe('New tags'),
+  name: z.string().nullish().describe('New name'),
+  type: locationTypeSchema.nullish().describe('New type'),
+  coordinates: coordinatesSchema.nullish().describe('New coordinates'),
+  address: addressSchema.nullish().describe('New address'),
+  timezone: z.string().nullish().describe('New timezone'),
+  isDefault: z.boolean().nullish().describe('Update default status'),
+  tags: z.array(z.string()).nullish().describe('New tags'),
 });
 
 const updateLocationOutputSchema = locationSchema;
@@ -281,8 +296,15 @@ const updateLocationTool: ToolDefinition<UpdateLocationInput, UpdateLocationOutp
   examples: [{ input: { id: '123', name: 'New Office' }, description: 'Rename a location' }],
   execute: async (input: UpdateLocationInput, context: ToolContext): Promise<UpdateLocationOutput> => {
     const locationService = context.services.get(LocationService);
-    const { id, ...updates } = input;
-    return locationService.updateLocation(id, updates);
+    return locationService.updateLocation(input.id, {
+      name: nullToUndefined(input.name),
+      type: nullToUndefined(input.type),
+      coordinates: nullToUndefined(input.coordinates),
+      address: nullToUndefined(input.address),
+      timezone: nullToUndefined(input.timezone),
+      isDefault: nullToUndefined(input.isDefault),
+      tags: nullToUndefined(input.tags),
+    });
   },
 };
 

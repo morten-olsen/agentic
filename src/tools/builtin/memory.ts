@@ -4,14 +4,21 @@ import type { ToolDefinition, ToolContext, ToolRegistry } from '../tools.ts';
 import { MemoryService, memoryTypeSchema, memoryEntrySchema, recallOptionsSchema } from '../../memory/memory.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // Remember (Create Memory)
 // ============================================================================
 
 const rememberInputSchema = z.object({
   type: memoryTypeSchema.describe('Type of memory to store'),
   content: z.string().min(1).describe('Content to remember'),
-  metadata: z.record(z.string(), z.unknown()).optional().describe('Additional metadata'),
-  importance: z.number().min(0).max(1).optional().describe('Importance level (0-1). Defaults to 0.5.'),
+  metadata: z.record(z.string(), z.unknown()).nullish().describe('Additional metadata'),
+  importance: z.number().min(0).max(1).nullish().describe('Importance level (0-1). Defaults to 0.5.'),
 });
 
 const rememberOutputSchema = memoryEntrySchema;
@@ -46,7 +53,12 @@ const rememberTool: ToolDefinition<RememberInput, RememberOutput> = {
   ],
   execute: async (input: RememberInput, context: ToolContext): Promise<RememberOutput> => {
     const memoryService = context.services.get(MemoryService);
-    return memoryService.remember(input);
+    return memoryService.remember({
+      type: input.type,
+      content: input.content,
+      metadata: nullToUndefined(input.metadata),
+      importance: nullToUndefined(input.importance),
+    });
   },
 };
 
@@ -56,9 +68,9 @@ const rememberTool: ToolDefinition<RememberInput, RememberOutput> = {
 
 const recallInputSchema = z.object({
   query: z.string().min(1).describe('Natural language query to search for'),
-  limit: z.number().positive().optional().describe('Maximum number of results'),
-  types: z.array(memoryTypeSchema).optional().describe('Filter by memory types'),
-  minImportance: z.number().min(0).max(1).optional().describe('Minimum importance threshold'),
+  limit: z.number().positive().nullish().describe('Maximum number of results'),
+  types: z.array(memoryTypeSchema).nullish().describe('Filter by memory types'),
+  minImportance: z.number().min(0).max(1).nullish().describe('Minimum importance threshold'),
 });
 
 const recallOutputSchema = z.object({
@@ -90,8 +102,11 @@ const recallTool: ToolDefinition<RecallInput, RecallOutput> = {
   ],
   execute: async (input: RecallInput, context: ToolContext): Promise<RecallOutput> => {
     const memoryService = context.services.get(MemoryService);
-    const { query, ...options } = input;
-    const memories = await memoryService.recall(query, options);
+    const memories = await memoryService.recall(input.query, {
+      limit: nullToUndefined(input.limit),
+      types: nullToUndefined(input.types),
+      minImportance: nullToUndefined(input.minImportance),
+    });
     return { memories, count: memories.length };
   },
 };
@@ -102,7 +117,7 @@ const recallTool: ToolDefinition<RecallInput, RecallOutput> = {
 
 const recallByTypeInputSchema = z.object({
   type: memoryTypeSchema.describe('Type of memories to retrieve'),
-  limit: z.number().positive().optional().describe('Maximum number of results'),
+  limit: z.number().positive().nullish().describe('Maximum number of results'),
 });
 
 const recallByTypeOutputSchema = z.object({
@@ -134,7 +149,7 @@ const recallByTypeTool: ToolDefinition<RecallByTypeInput, RecallByTypeOutput> = 
   ],
   execute: async (input: RecallByTypeInput, context: ToolContext): Promise<RecallByTypeOutput> => {
     const memoryService = context.services.get(MemoryService);
-    const memories = await memoryService.recallByType(input.type, input.limit);
+    const memories = await memoryService.recallByType(input.type, nullToUndefined(input.limit));
     return { memories, count: memories.length };
   },
 };
@@ -338,7 +353,7 @@ const forgetTool: ToolDefinition<ForgetInput, ForgetOutput> = {
 // ============================================================================
 
 const getRecentTopicsInputSchema = z.object({
-  limit: z.number().positive().optional().describe('Maximum number of topics. Defaults to 5.'),
+  limit: z.number().positive().nullish().describe('Maximum number of topics. Defaults to 5.'),
 });
 
 const getRecentTopicsOutputSchema = z.object({
@@ -370,7 +385,7 @@ const getRecentTopicsTool: ToolDefinition<GetRecentTopicsInput, GetRecentTopicsO
   ],
   execute: async (input: GetRecentTopicsInput, context: ToolContext): Promise<GetRecentTopicsOutput> => {
     const memoryService = context.services.get(MemoryService);
-    const topics = await memoryService.getRecentTopics(input.limit);
+    const topics = await memoryService.getRecentTopics(nullToUndefined(input.limit));
     return { topics, count: topics.length };
   },
 };

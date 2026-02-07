@@ -22,9 +22,9 @@ import {
 // ============================================================================
 
 const debugListTriggersInputSchema = z.object({
-  status: z.enum(['active', 'paused', 'completed', 'failed']).optional().describe('Filter by status'),
-  includeSchedulerState: z.boolean().optional().default(true).describe('Include in-memory scheduler state'),
-  limit: z.number().optional().default(50).describe('Maximum number of triggers to return'),
+  status: z.enum(['active', 'paused', 'completed', 'failed']).nullish().describe('Filter by status'),
+  includeSchedulerState: z.boolean().nullish().default(true).describe('Include in-memory scheduler state'),
+  limit: z.number().nullish().default(50).describe('Maximum number of triggers to return'),
 });
 
 const debugListTriggersOutputSchema = z.object({
@@ -91,8 +91,8 @@ Use this to get an overview of trigger system health.`,
     const triggerService = context.services.get(TriggerService);
 
     const triggers = await triggerService.list({
-      status: input.status,
-      limit: input.limit,
+      status: nullToUndefined(input.status),
+      limit: nullToUndefined(input.limit),
     });
 
     const schedulerState = triggerService.getSchedulerState();
@@ -135,10 +135,10 @@ Use this to get an overview of trigger system health.`,
 // ============================================================================
 
 const debugGetTriggerInputSchema = z.object({
-  triggerId: z.string().optional().describe('Trigger ID'),
-  triggerName: z.string().optional().describe('Or lookup by name'),
-  includeConversations: z.boolean().optional().default(true).describe('Include conversation summaries'),
-  conversationLimit: z.number().optional().default(10).describe('How many recent conversations'),
+  triggerId: z.string().nullish().describe('Trigger ID'),
+  triggerName: z.string().nullish().describe('Or lookup by name'),
+  includeConversations: z.boolean().nullish().default(true).describe('Include conversation summaries'),
+  conversationLimit: z.number().nullish().default(10).describe('How many recent conversations'),
 });
 
 const debugGetTriggerOutputSchema = z.object({
@@ -235,7 +235,7 @@ Use this after debug_list_triggers to drill into a specific trigger.`,
     const conversations: { id: string; invokedAt: string; messageCount: number; title?: string }[] = [];
     if (input.includeConversations) {
       const conversationIds = await triggerService.getConversations(trigger.id, {
-        limit: input.conversationLimit,
+        limit: nullToUndefined(input.conversationLimit),
       });
 
       for (const convId of conversationIds) {
@@ -288,9 +288,9 @@ Use this after debug_list_triggers to drill into a specific trigger.`,
 // ============================================================================
 
 const debugTriggerHistoryInputSchema = z.object({
-  triggerId: z.string().optional().describe('Filter to specific trigger'),
-  since: z.string().optional().describe('Only invocations after this ISO8601 time'),
-  limit: z.number().optional().default(50).describe('Maximum number of invocations'),
+  triggerId: z.string().nullish().describe('Filter to specific trigger'),
+  since: z.string().nullish().describe('Only invocations after this ISO8601 time'),
+  limit: z.number().nullish().default(50).describe('Maximum number of invocations'),
 });
 
 const debugTriggerHistoryOutputSchema = z.object({
@@ -539,10 +539,10 @@ Use this to trace exactly what happened in a conversation.`,
 // ============================================================================
 
 const debugListConversationsInputSchema = z.object({
-  triggerOnly: z.boolean().optional().default(false).describe('Only trigger-invoked conversations'),
-  triggerId: z.string().optional().describe('Only conversations from this trigger'),
-  since: z.string().optional().describe('Only after this ISO8601 time'),
-  limit: z.number().optional().default(20).describe('Maximum number of conversations'),
+  triggerOnly: z.boolean().nullish().default(false).describe('Only trigger-invoked conversations'),
+  triggerId: z.string().nullish().describe('Only conversations from this trigger'),
+  since: z.string().nullish().describe('Only after this ISO8601 time'),
+  limit: z.number().nullish().default(20).describe('Maximum number of conversations'),
 });
 
 const debugListConversationsOutputSchema = z.object({
@@ -602,7 +602,7 @@ Useful for finding conversation IDs to inspect with debug_get_conversation.`,
     if (input.triggerId) {
       // Get conversations for specific trigger
       conversationIds = await triggerService.getConversations(input.triggerId, {
-        limit: input.limit,
+        limit: nullToUndefined(input.limit),
       });
     } else if (input.triggerOnly) {
       // Get all trigger conversations
@@ -616,7 +616,7 @@ Useful for finding conversation IDs to inspect with debug_get_conversation.`,
       conversationIds = rows.map((r: { conversation_id: string }) => r.conversation_id);
     } else {
       // Get all recent conversations
-      const convs = await listConversations(db, { limit: input.limit });
+      const convs = await listConversations(db, { limit: nullToUndefined(input.limit) });
       conversationIds = convs.map((c) => c.id);
     }
 
@@ -734,21 +734,18 @@ Use this for a quick overview of system state.`,
 
 const debugSearchLogsInputSchema = z.object({
   level: z
-    .union([z.enum(['debug', 'info', 'warn', 'error']), z.array(z.enum(['debug', 'info', 'warn', 'error']))])
-    .optional()
+    .array(z.enum(['debug', 'info', 'warn', 'error']))
+    .nullish()
     .describe('Filter by log level(s)'),
-  source: z
-    .union([z.string(), z.array(z.string())])
-    .optional()
-    .describe('Filter by source(s), supports wildcards like "tool:*"'),
-  conversationId: z.string().optional().describe('Filter by conversation ID'),
-  triggerId: z.string().optional().describe('Filter by trigger ID'),
-  toolName: z.string().optional().describe('Filter by tool name'),
-  since: z.string().optional().describe('Only logs after this time (ISO8601 or relative like "1 hour ago")'),
-  until: z.string().optional().describe('Only logs before this time'),
-  search: z.string().optional().describe('Search text in log messages'),
-  limit: z.number().optional().default(50).describe('Maximum logs to return'),
-  offset: z.number().optional().default(0).describe('Offset for pagination'),
+  source: z.array(z.string()).nullish().describe('Filter by source(s), supports wildcards like "tool:*"'),
+  conversationId: z.string().nullish().describe('Filter by conversation ID'),
+  triggerId: z.string().nullish().describe('Filter by trigger ID'),
+  toolName: z.string().nullish().describe('Filter by tool name'),
+  since: z.string().nullish().describe('Only logs after this time (ISO8601 or relative like "1 hour ago")'),
+  until: z.string().nullish().describe('Only logs before this time'),
+  search: z.string().nullish().describe('Search text in log messages'),
+  limit: z.number().nullish().default(50).describe('Maximum logs to return'),
+  offset: z.number().nullish().default(0).describe('Offset for pagination'),
 });
 
 const debugSearchLogsOutputSchema = z.object({
@@ -802,8 +799,8 @@ Examples:
   },
   tags: ['debugging', 'logs', 'read'],
   examples: [
-    { input: { level: 'error' }, description: 'Find all errors' },
-    { input: { level: 'error', search: '400' }, description: 'Find 400 errors' },
+    { input: { level: ['error'] }, description: 'Find all errors' },
+    { input: { level: ['error'], search: '400' }, description: 'Find 400 errors' },
     { input: { conversationId: 'abc123' }, description: 'Logs for a conversation' },
   ],
   execute: async (input: DebugSearchLogsInput, context: ToolContext): Promise<DebugSearchLogsOutput> => {
@@ -811,16 +808,16 @@ Examples:
     const logService = context.services.get(LogService);
 
     const result = await logService.query({
-      level: input.level,
-      source: input.source,
-      conversationId: input.conversationId,
-      triggerId: input.triggerId,
-      toolName: input.toolName,
-      since: input.since,
-      until: input.until,
-      search: input.search,
-      limit: input.limit,
-      offset: input.offset,
+      level: nullToUndefined(input.level),
+      source: nullToUndefined(input.source),
+      conversationId: nullToUndefined(input.conversationId),
+      triggerId: nullToUndefined(input.triggerId),
+      toolName: nullToUndefined(input.toolName),
+      since: nullToUndefined(input.since),
+      until: nullToUndefined(input.until),
+      search: nullToUndefined(input.search),
+      limit: input.limit ?? 50,
+      offset: input.offset ?? 0,
       order: 'desc',
     });
 
@@ -838,9 +835,9 @@ Examples:
 
 const debugGetLogContextInputSchema = z.object({
   logId: z.string().describe('The log entry ID to get context for'),
-  before: z.number().optional().default(10).describe('Number of log entries before'),
-  after: z.number().optional().default(10).describe('Number of log entries after'),
-  sameSourceOnly: z.boolean().optional().default(false).describe('Only include logs from the same source'),
+  before: z.number().nullish().default(10).describe('Number of log entries before'),
+  after: z.number().nullish().default(10).describe('Number of log entries after'),
+  sameSourceOnly: z.boolean().nullish().default(false).describe('Only include logs from the same source'),
 });
 
 const debugGetLogContextOutputSchema = z.object({
@@ -912,9 +909,9 @@ before and after it. Returns logs within a time window.`,
     const logService = context.services.get(LogService);
 
     const result = await logService.getContext(input.logId, {
-      before: input.before,
-      after: input.after,
-      sameSourceOnly: input.sameSourceOnly,
+      before: input.before ?? 10,
+      after: input.after ?? 10,
+      sameSourceOnly: input.sameSourceOnly ?? false,
     });
 
     return {
@@ -942,7 +939,7 @@ before and after it. Returns logs within a time window.`,
 // ============================================================================
 
 const debugLogStatsInputSchema = z.object({
-  since: z.string().optional().describe('Only stats for logs after this time'),
+  since: z.string().nullish().describe('Only stats for logs after this time'),
 });
 
 const debugLogStatsOutputSchema = z.object({
@@ -991,7 +988,7 @@ Useful for getting an overview of system health.`,
     const { LogService } = await import('../../logging/index.ts');
     const logService = context.services.get(LogService);
 
-    return logService.stats(input.since);
+    return logService.stats(nullToUndefined(input.since));
   },
 };
 

@@ -4,32 +4,39 @@ import type { ToolDefinition, ToolContext, ToolRegistry } from '../tools.ts';
 import { DayPlanService, dayPlanSchema, energyLevelSchema } from '../../day-planner/day-planner.ts';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+// ============================================================================
 // Day Plan Create Tool
 // ============================================================================
 
 const dayPlanCreateInputSchema = z.object({
-  intentions: z.array(z.string()).optional().describe('High-level intentions for the day'),
+  intentions: z.array(z.string()).nullish().describe('High-level intentions for the day'),
   priorities: z
     .array(
       z.object({
         description: z.string().describe('Priority description'),
-        category: z.string().optional().describe('Category like work, personal, health'),
+        category: z.string().nullish().describe('Category like work, personal, health'),
       }),
     )
-    .optional()
+    .nullish()
     .describe('Ordered list of priorities (most important first)'),
   focusBlocks: z
     .array(
       z.object({
         label: z.string().describe('Label for the focus block'),
-        startTime: z.string().optional().describe('Start time (HH:MM format)'),
+        startTime: z.string().nullish().describe('Start time (HH:MM format)'),
         duration: z.number().describe('Duration in minutes'),
       }),
     )
-    .optional()
+    .nullish()
     .describe('Dedicated focus time blocks'),
-  energyLevel: energyLevelSchema.optional().describe("User's expected energy level"),
-  notes: z.string().optional().describe('Additional notes'),
+  energyLevel: energyLevelSchema.nullish().describe("User's expected energy level"),
+  notes: z.string().nullish().describe('Additional notes'),
 });
 
 const dayPlanCreateOutputSchema = dayPlanSchema;
@@ -72,11 +79,18 @@ it will be updated with the new information.`,
   execute: async (input: DayPlanCreateInput, context: ToolContext): Promise<DayPlanCreateOutput> => {
     const dayPlanService = context.services.get(DayPlanService);
     return dayPlanService.upsertPlan({
-      intentions: input.intentions,
-      priorities: input.priorities,
-      focusBlocks: input.focusBlocks,
-      energyLevel: input.energyLevel,
-      notes: input.notes,
+      intentions: nullToUndefined(input.intentions),
+      priorities: nullToUndefined(input.priorities)?.map((p) => ({
+        description: p.description,
+        category: nullToUndefined(p.category),
+      })),
+      focusBlocks: nullToUndefined(input.focusBlocks)?.map((f) => ({
+        label: f.label,
+        duration: f.duration,
+        startTime: nullToUndefined(f.startTime),
+      })),
+      energyLevel: nullToUndefined(input.energyLevel),
+      notes: nullToUndefined(input.notes),
     });
   },
 };
@@ -87,8 +101,8 @@ it will be updated with the new information.`,
 
 const dayPlanAddPriorityInputSchema = z.object({
   description: z.string().describe('Priority description'),
-  category: z.string().optional().describe('Category like work, personal, health'),
-  position: z.number().int().min(0).optional().describe('Position in list (0 = top, omit for end)'),
+  category: z.string().nullish().describe('Category like work, personal, health'),
+  position: z.number().int().min(0).nullish().describe('Position in list (0 = top, omit for end)'),
 });
 
 const dayPlanAddPriorityOutputSchema = z.object({
@@ -142,8 +156,8 @@ const dayPlanAddPriorityTool: ToolDefinition<DayPlanAddPriorityInput, DayPlanAdd
 
     const priority = await dayPlanService.addPriority(plan.id, {
       description: input.description,
-      category: input.category,
-      position: input.position,
+      category: nullToUndefined(input.category),
+      position: nullToUndefined(input.position),
     });
 
     // Get updated plan - must exist since we just created/updated it
@@ -172,8 +186,8 @@ const dayPlanAddPriorityTool: ToolDefinition<DayPlanAddPriorityInput, DayPlanAdd
 
 const dayPlanUpdatePriorityInputSchema = z.object({
   priorityId: z.string().describe('ID of the priority to update'),
-  completed: z.boolean().optional().describe('Mark as completed'),
-  description: z.string().optional().describe('Update the description'),
+  completed: z.boolean().nullish().describe('Mark as completed'),
+  description: z.string().nullish().describe('Update the description'),
 });
 
 const dayPlanUpdatePriorityOutputSchema = z.object({
@@ -219,8 +233,8 @@ const dayPlanUpdatePriorityTool: ToolDefinition<DayPlanUpdatePriorityInput, DayP
     const dayPlanService = context.services.get(DayPlanService);
 
     const priority = await dayPlanService.updatePriority(input.priorityId, {
-      completed: input.completed,
-      description: input.description,
+      completed: nullToUndefined(input.completed),
+      description: nullToUndefined(input.description),
     });
 
     return {
@@ -241,7 +255,7 @@ const dayPlanUpdatePriorityTool: ToolDefinition<DayPlanUpdatePriorityInput, DayP
 // ============================================================================
 
 const dayPlanGetInputSchema = z.object({
-  date: z.string().optional().describe('ISO date (YYYY-MM-DD), defaults to today'),
+  date: z.string().nullish().describe('ISO date (YYYY-MM-DD), defaults to today'),
 });
 
 const dayPlanGetOutputSchema = z.object({

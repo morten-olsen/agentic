@@ -3,24 +3,31 @@ import { z } from 'zod';
 import type { ToolDefinition, ToolContext } from '../tools.ts';
 import { InterruptSignal } from '../../orchestrator/interrupts/interrupts.ts';
 
+// ============================================================================
+// Utilities
+// ============================================================================
+
+/** Converts null to undefined for service boundary compatibility */
+const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
 /**
  * Input schema for the ask user tool.
  */
 const askUserInputSchema = z.object({
   question: z.string().describe('The question to ask the user'),
-  context: z.string().optional().describe('Additional context to help the user understand the question'),
+  context: z.string().nullish().describe('Additional context to help the user understand the question'),
   options: z
     .array(
       z.object({
         id: z.string().describe('Unique identifier for this option'),
         label: z.string().describe('Display label for the option'),
-        description: z.string().optional().describe('Additional description of what this option means'),
-        isRecommended: z.boolean().optional().describe('Whether this is the recommended option'),
+        description: z.string().nullish().describe('Additional description of what this option means'),
+        isRecommended: z.boolean().nullish().describe('Whether this is the recommended option'),
       }),
     )
-    .optional()
+    .nullish()
     .describe('Predefined options for the user to choose from'),
-  allowFreeform: z.boolean().optional().default(true).describe('Whether to allow free-form text responses'),
+  allowFreeform: z.boolean().nullish().default(true).describe('Whether to allow free-form text responses'),
 });
 
 type AskUserInput = z.input<typeof askUserInputSchema>;
@@ -105,12 +112,12 @@ const askUserTool: ToolDefinition<AskUserInput, AskUserOutput> = {
     throw new InterruptSignal({
       type: 'question',
       prompt: input.question,
-      context: input.context,
+      context: nullToUndefined(input.context),
       options: input.options?.map((opt) => ({
         id: opt.id,
         label: opt.label,
-        description: opt.description,
-        isRecommended: opt.isRecommended,
+        description: nullToUndefined(opt.description),
+        isRecommended: nullToUndefined(opt.isRecommended),
       })),
       allowFreeform: input.allowFreeform ?? true,
     });

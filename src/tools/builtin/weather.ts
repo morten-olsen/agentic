@@ -72,15 +72,15 @@ const getWeatherCondition = (code: number): string => {
  */
 const weatherInputSchema = z
   .object({
-    location: z.string().optional().describe('Location name to look up (e.g., "San Francisco", "Paris, France")'),
-    latitude: z.number().min(-90).max(90).optional().describe('Latitude coordinate (-90 to 90)'),
-    longitude: z.number().min(-180).max(180).optional().describe('Longitude coordinate (-180 to 180)'),
+    location: z.string().nullish().describe('Location name to look up (e.g., "San Francisco", "Paris, France")'),
+    latitude: z.number().min(-90).max(90).nullish().describe('Latitude coordinate (-90 to 90)'),
+    longitude: z.number().min(-180).max(180).nullish().describe('Longitude coordinate (-180 to 180)'),
     units: z
       .enum(['celsius', 'fahrenheit'])
-      .optional()
+      .nullish()
       .default('fahrenheit')
       .describe('Temperature units (default: fahrenheit)'),
-    includeForecast: z.boolean().optional().default(true).describe('Include 3-day forecast (default: true)'),
+    includeForecast: z.boolean().nullish().default(true).describe('Include 3-day forecast (default: true)'),
   })
   .refine((data) => data.location || (data.latitude !== undefined && data.longitude !== undefined), {
     message: 'Either location OR both latitude and longitude must be provided',
@@ -400,8 +400,8 @@ const execute = async (input: WeatherInput, context: ToolContext): Promise<Weath
   const weatherData = await fetchWeather(
     locationInfo.latitude,
     locationInfo.longitude,
-    units,
-    includeForecast,
+    units ?? 'fahrenheit',
+    includeForecast ?? true,
     context.abortSignal,
   );
 

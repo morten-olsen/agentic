@@ -138,7 +138,7 @@ This removes the skill's tools from your available tools.`,
 // ============================================================================
 
 const listSkillsInputSchema = z.object({
-  includeInactive: z.boolean().optional().default(true).describe('Include inactive (available) skills'),
+  includeInactive: z.boolean().nullish().default(true).describe('Include inactive (available) skills'),
 });
 
 const skillSummarySchema = z.object({

@@ -45,7 +45,7 @@ const webFetchInputSchema = z.object({
   url: z.string().describe('The URL to fetch content from'),
   outputFormat: z
     .enum(['raw', 'article'])
-    .optional()
+    .nullish()
     .default('article')
     .describe('Output format: raw returns HTML, article extracts markdown and links'),
   timeout: z
@@ -53,7 +53,7 @@ const webFetchInputSchema = z.object({
     .int()
     .min(MIN_TIMEOUT_MS)
     .max(MAX_TIMEOUT_MS)
-    .optional()
+    .nullish()
     .default(DEFAULT_TIMEOUT_MS)
     .describe('Request timeout in milliseconds (1000-60000)'),
   maxSize: z
@@ -61,7 +61,7 @@ const webFetchInputSchema = z.object({
     .int()
     .min(MIN_MAX_SIZE_BYTES)
     .max(MAX_MAX_SIZE_BYTES)
-    .optional()
+    .nullish()
     .default(DEFAULT_MAX_SIZE_BYTES)
     .describe('Maximum response size in bytes (1KB-10MB)'),
 });
@@ -270,7 +270,12 @@ const execute = async (input: WebFetchInput, context: ToolContext): Promise<WebF
   const url = validateUrl(urlString);
 
   // Fetch content
-  const { response, html } = await fetchWithSizeLimit(url, timeout, maxSize, context.abortSignal);
+  const { response, html } = await fetchWithSizeLimit(
+    url,
+    timeout ?? DEFAULT_TIMEOUT_MS,
+    maxSize ?? DEFAULT_MAX_SIZE_BYTES,
+    context.abortSignal,
+  );
 
   const finalUrl = response.url;
   const contentType = response.headers.get('content-type') ?? 'text/html';
