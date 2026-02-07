@@ -61,7 +61,10 @@
       "WebFetch(domain:support.ouraring.com)",
       "WebFetch(domain:jsr.io)",
       "WebFetch(domain:n8n.io)",
-      "WebFetch(domain:partnersupport.ouraring.com)"
+      "WebFetch(domain:partnersupport.ouraring.com)",
+      "Bash(done)",
+      "Bash(git mv:*)",
+      "Bash(timeout 3 pnpm cli:*)"
     ]
   }
 }

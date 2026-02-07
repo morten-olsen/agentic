@@ -13,11 +13,11 @@
  * - Any pending interrupts
  */
 
-import { Services } from '../services/services.ts';
-import { DatabaseService, createDatabaseService } from '../database/database.ts';
-import { loadConfig } from '../config/config.ts';
-import { getConversation, getMessages } from '../orchestrator/orchestrator.store.ts';
-import { getTelegramChatByConversation } from '../clients/telegram/telegram.store.ts';
+import { Services } from '../core/services/services.ts';
+import { DatabaseService, createDatabaseService } from '../core/database/database.ts';
+import { loadConfig } from '../core/config/config.ts';
+import { getConversation, getMessages } from '../agent/orchestrator/orchestrator.store.ts';
+import { getTelegramChatByConversation } from '../integrations/clients/telegram/telegram.store.ts';
 
 /**
  * Formats a message for display.

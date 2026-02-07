@@ -14,18 +14,18 @@
  *   status <id>             - Show conversation status and pending interrupts
  */
 
-import { Services } from '../services/services.ts';
-import { DatabaseService, createDatabaseService } from '../database/database.ts';
-import { UserModelService } from '../user-model/user-model.ts';
-import { LocationService } from '../location/location.ts';
-import { CalendarService } from '../calendar/calendar.ts';
-import { ContactsService } from '../contacts/contacts.ts';
-import { ContextBuilderService } from '../context/context.ts';
-import { PersonalityService } from '../personality/personality.ts';
-import { MemoryService } from '../memory/memory.ts';
-import { loadConfig } from '../config/config.ts';
-import { OrchestratorService } from '../orchestrator/orchestrator.ts';
-import type { ChatChunk } from '../orchestrator/orchestrator.ts';
+import { Services } from '../core/services/services.ts';
+import { DatabaseService, createDatabaseService } from '../core/database/database.ts';
+import { UserModelService } from '../domain/user-model/user-model.ts';
+import { LocationService } from '../domain/location/location.ts';
+import { CalendarService } from '../domain/calendar/calendar.ts';
+import { ContactsService } from '../domain/contacts/contacts.ts';
+import { ContextBuilderService } from '../agent/context/context.ts';
+import { PersonalityService } from '../agent/personality/personality.ts';
+import { MemoryService } from '../agent/memory/memory.ts';
+import { loadConfig } from '../core/config/config.ts';
+import { OrchestratorService } from '../agent/orchestrator/orchestrator.ts';
+import type { ChatChunk } from '../agent/orchestrator/orchestrator.ts';
 
 /**
  * Initialize services.

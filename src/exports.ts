@@ -5,15 +5,15 @@
  */
 
 // Services container
-export { Services, destroySymbol } from './services/services.ts';
-export type { ServiceConstructor, Destroyable } from './services/services.ts';
+export { Services, destroySymbol } from './core/services/services.ts';
+export type { ServiceConstructor, Destroyable } from './core/services/services.ts';
 
 // Database
-export { DatabaseService, createDatabaseService, databaseConfigSchema } from './database/database.ts';
-export type { DatabaseConfig } from './database/database.ts';
+export { DatabaseService, createDatabaseService, databaseConfigSchema } from './core/database/database.ts';
+export type { DatabaseConfig } from './core/database/database.ts';
 
 // User Model
-export { UserModelService, getTimeOfDay, isWorkingHours } from './user-model/user-model.ts';
+export { UserModelService, getTimeOfDay, isWorkingHours } from './domain/user-model/user-model.ts';
 export type {
   Identity,
   IdentityInput,
@@ -32,10 +32,10 @@ export type {
   WorkingHours,
   Preferences,
   TimeOfDay,
-} from './user-model/user-model.ts';
+} from './domain/user-model/user-model.ts';
 
 // Contacts
-export { ContactsService } from './contacts/contacts.ts';
+export { ContactsService } from './domain/contacts/contacts.ts';
 export type {
   Contact,
   CreateContactInput,
@@ -46,10 +46,10 @@ export type {
   RelationshipType,
   RelationshipImportance,
   Relationship,
-} from './contacts/contacts.ts';
+} from './domain/contacts/contacts.ts';
 
 // Location
-export { LocationService, isAtHome, isAtWork, isTraveling, getLocationTimezone } from './location/location.ts';
+export { LocationService, isAtHome, isAtWork, isTraveling, getLocationTimezone } from './domain/location/location.ts';
 export type {
   Location,
   CreateLocationInput,
@@ -60,7 +60,7 @@ export type {
   LocationConfidence,
   Coordinates,
   Address,
-} from './location/location.ts';
+} from './domain/location/location.ts';
 
 // Calendar
 export {
@@ -75,7 +75,7 @@ export {
   sortEventsByStart,
   formatEventTime,
   getEventDuration,
-} from './calendar/calendar.ts';
+} from './domain/calendar/calendar.ts';
 export type {
   CalendarEvent,
   CreateCalendarEventInput,
@@ -87,11 +87,11 @@ export type {
   Recurrence,
   TimeBlockType,
   TimeBlock,
-} from './calendar/calendar.ts';
+} from './domain/calendar/calendar.ts';
 
 // Context Builder
-export { ContextBuilderService } from './context/context.ts';
-export type { AgentContext, LocationContext, CalendarAgentContext, UserContext } from './context/context.ts';
+export { ContextBuilderService } from './agent/context/context.ts';
+export type { AgentContext, LocationContext, CalendarAgentContext, UserContext } from './agent/context/context.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Phase 2: Core Orchestration Layer
@@ -111,7 +111,7 @@ export {
   ToolInputValidationError,
   ToolOutputValidationError,
   ToolTimeoutError,
-} from './tools/tools.ts';
+} from './agent/tools/tools.ts';
 export type {
   RiskLevel,
   RiskCategory,
@@ -122,7 +122,7 @@ export type {
   RegisteredTool,
   ToolExecutionOptions,
   ToolExecutionEvent,
-} from './tools/tools.ts';
+} from './agent/tools/tools.ts';
 
 // Tool Adapters
 export {
@@ -132,11 +132,11 @@ export {
   toLangChainToolsByCategory,
   toLangChainToolsByTag,
   getToolJsonSchema,
-} from './tools/adapters/adapters.langchain.ts';
+} from './agent/tools/adapters/adapters.langchain.ts';
 
 // Builtin Tools
-export { registerBuiltinTools, echoTool } from './tools/builtin/builtin.ts';
-export type { EchoInput, EchoOutput } from './tools/builtin/builtin.ts';
+export { registerBuiltinTools, echoTool } from './agent/tools/builtin/builtin.ts';
+export type { EchoInput, EchoOutput } from './agent/tools/builtin/builtin.ts';
 
 // Personality
 export {
@@ -148,7 +148,7 @@ export {
   personalityConfigSchema,
   createPersonalityInputSchema,
   updatePersonalityInputSchema,
-} from './personality/personality.ts';
+} from './agent/personality/personality.ts';
 export type {
   Style,
   Traits,
@@ -156,7 +156,7 @@ export type {
   PersonalityConfig,
   CreatePersonalityInput,
   UpdatePersonalityInput,
-} from './personality/personality.ts';
+} from './agent/personality/personality.ts';
 
 // Orchestrator
 export {
@@ -170,7 +170,7 @@ export {
   ConversationNotFoundError,
   OrchestratorNotConfiguredError,
   LLMInvocationError,
-} from './orchestrator/orchestrator.ts';
+} from './agent/orchestrator/orchestrator.ts';
 export type {
   OrchestratorState,
   LLMConfig,
@@ -180,11 +180,11 @@ export type {
   Conversation,
   ToolCall,
   ChatChunk,
-} from './orchestrator/orchestrator.ts';
+} from './agent/orchestrator/orchestrator.ts';
 
 // CLI (for programmatic access)
-export { Repl } from './cli/cli.repl.ts';
-export type { ReplConfig } from './cli/cli.repl.ts';
+export { Repl } from './integrations/cli/cli.repl.ts';
+export type { ReplConfig } from './integrations/cli/cli.repl.ts';
 
 // Configuration
 export {
@@ -197,8 +197,8 @@ export {
   getGlobalConfigDir,
   getUserConfigDir,
   configSchema,
-} from './config/config.ts';
-export type { Config } from './config/config.ts';
+} from './core/config/config.ts';
+export type { Config } from './core/config/config.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Phase 5: Long-Running Tasks
@@ -239,7 +239,7 @@ export {
   updateDelegatedTaskInputSchema,
   // Context schema
   pendingTaskContextSchema,
-} from './tasks/tasks.ts';
+} from './features/tasks/tasks.ts';
 export type {
   TaskTrigger,
   TaskTriggerType,
@@ -259,7 +259,7 @@ export type {
   CreateDelegatedTaskInput,
   UpdateDelegatedTaskInput,
   PendingTaskContext,
-} from './tasks/tasks.ts';
+} from './features/tasks/tasks.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Phase 6: Notifications
@@ -292,7 +292,7 @@ export {
   DEFAULT_CONFIG as NOTIFICATION_DEFAULT_CONFIG,
   isQuietHours,
   getQuietHoursEnd,
-} from './notifications/notifications.ts';
+} from './features/notifications/notifications.ts';
 export type {
   Urgency,
   NotificationType,
@@ -312,14 +312,14 @@ export type {
   NotificationDelivery,
   ChannelSender,
   AttentionConfig,
-} from './notifications/notifications.ts';
+} from './features/notifications/notifications.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Artifacts
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export { ArtifactService, DEFAULT_CONFIG as ARTIFACT_DEFAULT_CONFIG } from './artifacts/artifacts.ts';
-export type { ArtifactServiceConfig } from './artifacts/artifacts.ts';
+export { ArtifactService, DEFAULT_CONFIG as ARTIFACT_DEFAULT_CONFIG } from './features/artifacts/artifacts.ts';
+export type { ArtifactServiceConfig } from './features/artifacts/artifacts.ts';
 export {
   artifactMimeTypeSchema,
   artifactSchema,
@@ -329,7 +329,7 @@ export {
   artifactRowSchema,
   rowToArtifact,
   rowToArtifactMeta,
-} from './artifacts/artifacts.schemas.ts';
+} from './features/artifacts/artifacts.schemas.ts';
 export type {
   ArtifactMimeType,
   Artifact,
@@ -337,13 +337,13 @@ export type {
   CreateArtifactInput,
   CreateArtifactResult,
   ArtifactRow,
-} from './artifacts/artifacts.schemas.ts';
+} from './features/artifacts/artifacts.schemas.ts';
 export {
   ArtifactNotFoundError,
   ArtifactExpiredError,
   ArtifactSizeLimitError,
   ArtifactLimitExceededError,
-} from './artifacts/artifacts.errors.ts';
+} from './features/artifacts/artifacts.errors.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Logging
@@ -361,7 +361,7 @@ export {
   LOG_LEVEL_PRIORITY,
   formatLogEntry,
   writeToTerminal,
-} from './logging/index.ts';
+} from './core/logging/index.ts';
 export type {
   Logger,
   LogLevel,
@@ -371,4 +371,4 @@ export type {
   LogStats,
   LogConfig,
   LogConfigInput,
-} from './logging/index.ts';
+} from './core/logging/index.ts';

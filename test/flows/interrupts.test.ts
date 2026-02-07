@@ -9,9 +9,9 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../setup.ts';
 import { createTestServices, collectChatResponse } from '../utils/services.ts';
 import { createChatCompletion, createToolCallCompletion } from '../mocks/openai-responses.ts';
-import type { Services } from '../../src/services/services.ts';
-import type { OrchestratorService, ChatChunk } from '../../src/orchestrator/orchestrator.ts';
-import { ContactsService } from '../../src/contacts/contacts.ts';
+import type { Services } from '../../src/core/services/services.ts';
+import type { OrchestratorService, ChatChunk } from '../../src/agent/orchestrator/orchestrator.ts';
+import { ContactsService } from '../../src/domain/contacts/contacts.ts';
 
 describe('Interrupt Flow', () => {
   let services: Services;

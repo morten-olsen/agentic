@@ -144,6 +144,7 @@ Ideas for future enhancement (out of scope for current version).
 | 013-context-change-detection.md | Draft | Incremental context updates with change detection |
 | 014-event-log.md | Implemented | Unified event stream for system changes |
 | 015-health-tracking.md | Draft | Health/wellness tracking with Oura integration |
+| 016-src-restructure.md | Implemented | Reorganize src/ into logical groupings |
 
 ## Tips for AI Agents
 

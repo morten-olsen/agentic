@@ -2,7 +2,7 @@
   "type": "module",
   "main": "dist/exports.js",
   "bin": {
-    "glados": "./src/cli/cli.ts"
+    "glados": "./src/integrations/cli/cli.ts"
   },
   "scripts": {
     "build": "tsc --build",
@@ -10,9 +10,9 @@
     "test:build": "tsc --build",
     "test:unit": "vitest --run --passWithNoTests",
     "test": "pnpm run \"/^test:/\"",
-    "cli": "node --experimental-strip-types src/cli/cli.ts",
-    "telegram": "node --experimental-strip-types src/clients/telegram/telegram.cli.ts",
-    "server": "node --experimental-strip-types src/server/server.ts",
+    "cli": "node --experimental-strip-types src/integrations/cli/cli.ts",
+    "telegram": "node --experimental-strip-types src/integrations/clients/telegram/telegram.cli.ts",
+    "server": "node --experimental-strip-types src/core/server/server.ts",
     "conversation": "node --experimental-strip-types src/scripts/get-conversation.ts",
     "conversation:test": "node --experimental-strip-types src/scripts/test-conversation.ts"
   },

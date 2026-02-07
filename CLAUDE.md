@@ -90,29 +90,46 @@ glados/
 ├── spec/                  # Feature specifications
 ├── test/                  # Flow tests (MSW-based)
 └── src/
-    ├── config/            # Convict-based configuration
-    ├── database/          # Knex + SQLite + migrations
-    ├── services/          # Service container (DI)
-    ├── user-model/        # Identity, projects, goals, routines
-    ├── contacts/          # People and relationships
-    ├── calendar/          # Events, scheduling
-    ├── location/          # Places, location tracking
-    ├── context/           # Context Builder
-    ├── personality/       # Agent personality config
-    ├── tools/             # Tool system + LangChain adapters
-    ├── orchestrator/      # LangGraph agent orchestration
-    ├── memory/            # Storage, embeddings, entity knowledge
-    ├── tasks/             # User tasks, delegated tasks
-    ├── triggers/          # Agent-managed scheduled invocations
-    ├── day-planner/       # Daily planning sessions
-    ├── notifications/     # Multi-channel notifications
-    ├── skills/            # Domain-specific capabilities
-    ├── artifacts/         # Large data storage
-    ├── external/          # External service integrations (Home Assistant, Oura)
-    ├── health/            # Health data from wearables (Oura Ring)
-    ├── api/               # Fastify HTTP server for webhooks
-    ├── cli/               # Interactive CLI
-    └── clients/           # External client interfaces (Telegram)
+    ├── core/              # Foundation infrastructure
+    │   ├── config/        # Convict-based configuration
+    │   ├── database/      # Knex + SQLite + migrations
+    │   ├── logging/       # Structured logging
+    │   ├── server/        # HTTP server entry point
+    │   ├── services/      # DI container
+    │   ├── store/         # Base store abstraction
+    │   └── utils/         # Shared utilities
+    │
+    ├── domain/            # User's world model
+    │   ├── calendar/      # Events, scheduling, sync
+    │   ├── contacts/      # People and relationships
+    │   ├── location/      # Places, location tracking
+    │   └── user-model/    # Identity, projects, goals
+    │
+    ├── agent/             # AI orchestration layer
+    │   ├── context/       # Context Builder
+    │   ├── embeddings/    # Embedding generation
+    │   ├── memory/        # Storage, recall, entity knowledge
+    │   ├── orchestrator/  # LangGraph orchestration
+    │   ├── personality/   # Agent personality config
+    │   ├── skills/        # Domain-specific capabilities
+    │   └── tools/         # Tool system + adapters
+    │
+    ├── features/          # Proactive capabilities
+    │   ├── artifacts/     # Large data storage
+    │   ├── day-planner/   # Daily planning sessions
+    │   ├── events/        # Event log system
+    │   ├── notifications/ # Multi-channel notifications
+    │   ├── tasks/         # User & delegated tasks
+    │   └── triggers/      # Scheduled invocations
+    │
+    ├── integrations/      # External world
+    │   ├── api/           # HTTP webhooks
+    │   ├── cli/           # Interactive CLI
+    │   ├── clients/       # External clients (Telegram)
+    │   ├── external/      # External services (Home Assistant)
+    │   └── health/        # Health data (Oura)
+    │
+    └── scripts/           # Dev/debug scripts
 ```
 
 ## Debugging Conversations

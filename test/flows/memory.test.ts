@@ -9,9 +9,9 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../setup.ts';
 import { createTestServices, collectChatResponse } from '../utils/services.ts';
 import { createChatCompletion, createToolCallCompletion, createEmbeddingResponse } from '../mocks/openai-responses.ts';
-import type { Services } from '../../src/services/services.ts';
-import type { OrchestratorService } from '../../src/orchestrator/orchestrator.ts';
-import { MemoryService } from '../../src/memory/memory.ts';
+import type { Services } from '../../src/core/services/services.ts';
+import type { OrchestratorService } from '../../src/agent/orchestrator/orchestrator.ts';
+import { MemoryService } from '../../src/agent/memory/memory.ts';
 
 describe('Memory Flow', () => {
   let services: Services;

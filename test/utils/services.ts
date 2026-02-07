@@ -3,16 +3,16 @@
  * Creates a fully-initialized Services container for flow tests.
  */
 
-import { Services } from '../../src/services/services.ts';
-import { DatabaseService, createDatabaseService } from '../../src/database/database.ts';
-import { UserModelService } from '../../src/user-model/user-model.ts';
-import { LocationService } from '../../src/location/location.ts';
-import { CalendarService } from '../../src/calendar/calendar.ts';
-import { ContactsService } from '../../src/contacts/contacts.ts';
-import { ContextBuilderService } from '../../src/context/context.ts';
-import { PersonalityService } from '../../src/personality/personality.ts';
-import { MemoryService } from '../../src/memory/memory.ts';
-import { OrchestratorService } from '../../src/orchestrator/orchestrator.ts';
+import { Services } from '../../src/core/services/services.ts';
+import { DatabaseService, createDatabaseService } from '../../src/core/database/database.ts';
+import { UserModelService } from '../../src/domain/user-model/user-model.ts';
+import { LocationService } from '../../src/domain/location/location.ts';
+import { CalendarService } from '../../src/domain/calendar/calendar.ts';
+import { ContactsService } from '../../src/domain/contacts/contacts.ts';
+import { ContextBuilderService } from '../../src/agent/context/context.ts';
+import { PersonalityService } from '../../src/agent/personality/personality.ts';
+import { MemoryService } from '../../src/agent/memory/memory.ts';
+import { OrchestratorService } from '../../src/agent/orchestrator/orchestrator.ts';
 
 type TestServicesResult = {
   services: Services;

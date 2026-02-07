@@ -14,8 +14,8 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../setup.ts';
 import { createTestServices, collectChatResponse } from '../utils/services.ts';
 import { createChatCompletion, createToolCallCompletion } from '../mocks/openai-responses.ts';
-import type { Services } from '../../src/services/services.ts';
-import type { OrchestratorService } from '../../src/orchestrator/orchestrator.ts';
+import type { Services } from '../../src/core/services/services.ts';
+import type { OrchestratorService } from '../../src/agent/orchestrator/orchestrator.ts';
 
 describe('Tool Calling Flow', () => {
   let services: Services;
