@@ -145,6 +145,7 @@ Ideas for future enhancement (out of scope for current version).
 | 014-event-log.md | Implemented | Unified event stream for system changes |
 | 015-health-tracking.md | Draft | Health/wellness tracking with Oura integration |
 | 016-src-restructure.md | Implemented | Reorganize src/ into logical groupings |
+| 017-orchestrator-rewrite.md | Draft | Simplify and stabilize the orchestration layer |
 
 ## Tips for AI Agents
 

@@ -64,7 +64,9 @@
       "WebFetch(domain:partnersupport.ouraring.com)",
       "Bash(done)",
       "Bash(git mv:*)",
-      "Bash(timeout 3 pnpm cli:*)"
+      "Bash(timeout 3 pnpm cli:*)",
+      "Bash(while read line)",
+      "Bash(do echo \"$line\")"
     ]
   }
 }

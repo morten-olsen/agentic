@@ -13,6 +13,7 @@ import {
   isDeactivateSkillTool,
 } from '../../agent/skills/skills.node.ts';
 
+import type { ToolLookup } from './orchestrator.tool-collector.ts';
 import { OrchestratorAnnotation } from './orchestrator.state.ts';
 import type { OrchestratorState } from './orchestrator.state.ts';
 import { createMemoryRetrieverNode } from './orchestrator.nodes.ts';
@@ -256,12 +257,14 @@ const createFilteredToolNode = (tools: DynamicStructuredTool[]) => {
  * START → memory_retriever → turn_counter → [turn_limit_interrupt | router] → risk_gate → skill_activation → [interrupt | tools]
  *                                                    ↑                                                                    |
  *                                                    |____________________________________________________________________↓
+ *
+ * @param toolLookup - Tool lookup for risk gate (can be ToolRegistry or ToolLookup from collectTools)
  */
 const createOrchestratorGraph = (
   llm: ChatOpenAI,
   systemPrompt: string,
   tools: DynamicStructuredTool[],
-  toolRegistry?: ToolRegistry,
+  toolLookup?: ToolRegistry | ToolLookup,
   approvalLevels?: RiskLevel[],
   memoryService?: MemoryService,
   skillRegistry?: SkillRegistry,
@@ -276,9 +279,9 @@ const createOrchestratorGraph = (
   // Create the router node
   const routerNode = createRouterNode(llm, systemPrompt, tools);
 
-  // Create the risk gate node (if tool registry provided)
-  const riskGateNode = toolRegistry
-    ? createRiskGateNode(toolRegistry, approvalLevels ?? DEFAULT_APPROVAL_LEVELS, skillRegistry)
+  // Create the risk gate node (if tool lookup provided)
+  const riskGateNode = toolLookup
+    ? createRiskGateNode(toolLookup, approvalLevels ?? DEFAULT_APPROVAL_LEVELS, skillRegistry)
     : async () => ({ approvedToolCalls: [], interruptRequired: false });
 
   // Create the memory retriever node (with optional MemoryService)

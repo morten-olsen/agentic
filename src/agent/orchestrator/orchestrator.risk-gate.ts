@@ -1,10 +1,11 @@
 import type { AIMessage } from '@langchain/core/messages';
 
-import type { ToolRegistry, RiskLevel } from '../../agent/tools/tools.ts';
+import type { ToolRegistry, RiskLevel, ToolDefinition, RegisteredTool } from '../../agent/tools/tools.ts';
 import type { SkillRegistry } from '../../agent/skills/skills.ts';
 
 import type { OrchestratorState } from './orchestrator.state.ts';
 import type { ToolCallInfo } from './interrupts/interrupts.ts';
+import type { ToolLookup } from './orchestrator.tool-collector.ts';
 
 /**
  * Pending tool call with risk information.
@@ -52,12 +53,13 @@ const DEFAULT_APPROVAL_LEVELS: RiskLevel[] = ['medium', 'high', 'critical'];
  * Only the first high-risk tool call is returned as pending - subsequent
  * ones will be evaluated after the first is approved/denied.
  *
+ * @param toolLookup - Tool lookup (can be ToolRegistry or ToolLookup from collectTools)
  * @param skillRegistry - Optional skill registry to provide better error messages
  *                        for tools belonging to inactive skills
  */
 const evaluateRiskGate = (
   toolCalls: { id?: string; name: string; args: Record<string, unknown> }[],
-  toolRegistry: ToolRegistry,
+  toolLookup: ToolRegistry | ToolLookup,
   approvalLevels: RiskLevel[] = DEFAULT_APPROVAL_LEVELS,
   skillRegistry?: SkillRegistry,
 ): RiskGateResult => {
@@ -69,7 +71,7 @@ const evaluateRiskGate = (
     const id = toolCall.id ?? `call_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
     // Look up tool by id (LangChain tool name = GLaDOS tool id)
-    const tool = toolRegistry.get(toolCall.name);
+    const tool = toolLookup.get(toolCall.name) as ToolDefinition | RegisteredTool | undefined;
 
     if (!tool) {
       // Unknown tool - this is an error, not an approval request
@@ -167,9 +169,11 @@ const evaluateRiskGate = (
  * This node intercepts tool calls from the router and evaluates them
  * against the risk policy. Low-risk tools pass through immediately,
  * while higher-risk tools trigger an interrupt for user approval.
+ *
+ * @param toolLookup - Tool lookup (can be ToolRegistry or ToolLookup from collectTools)
  */
 const createRiskGateNode = (
-  toolRegistry: ToolRegistry,
+  toolLookup: ToolRegistry | ToolLookup,
   approvalLevels: RiskLevel[] = DEFAULT_APPROVAL_LEVELS,
   skillRegistry?: SkillRegistry,
 ) => {
@@ -209,7 +213,7 @@ const createRiskGateNode = (
     const toolsToEvaluate = toolCalls.filter((tc) => !approvedNames.has(tc.name));
 
     // Evaluate only the non-approved tool calls
-    const result = evaluateRiskGate(toolsToEvaluate, toolRegistry, approvalLevels, skillRegistry);
+    const result = evaluateRiskGate(toolsToEvaluate, toolLookup, approvalLevels, skillRegistry);
 
     // Merge with any existing approved calls
     const mergedApproved = [...existingApproved];

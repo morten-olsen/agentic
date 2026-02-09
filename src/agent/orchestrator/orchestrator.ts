@@ -1,7 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
 import type { BaseMessage } from '@langchain/core/messages';
-import type { DynamicStructuredTool } from '@langchain/core/tools';
 
 import type { Services } from '../../core/services/services.ts';
 import { DatabaseService } from '../../core/database/database.ts';
@@ -9,7 +8,6 @@ import { PersonalityService } from '../../agent/personality/personality.ts';
 import { ContextBuilderService } from '../../agent/context/context.ts';
 import { LogService } from '../../core/logging/index.ts';
 import { ToolRegistry } from '../../agent/tools/tools.ts';
-import { toLangChainToolsFiltered, toLangChainTool } from '../../agent/tools/adapters/adapters.langchain.ts';
 import { registerBuiltinTools } from '../../agent/tools/builtin/builtin.ts';
 import { KnexStore } from '../../core/store/store.ts';
 import { MemoryService } from '../../agent/memory/memory.ts';
@@ -17,16 +15,15 @@ import type { TriggerContext } from '../../features/triggers/triggers.schemas.ts
 import { SkillRegistry } from '../../agent/skills/skills.ts';
 import { registerBuiltinSkills, createActivationTools } from '../../agent/skills/index.ts';
 import type { ActiveSkill } from '../../agent/skills/skills.schemas.ts';
-import { formatSkillActivationPrompt, handleSkillActivationApproval } from '../../agent/skills/skills.node.ts';
+import { formatSkillActivationPrompt } from '../../agent/skills/skills.node.ts';
 import { generateAvailableSkillsContext } from '../../agent/skills/skills.context.ts';
 import { ExternalServiceRegistry } from '../../integrations/external/external.ts';
 import { generateDeltaInstructions } from '../../agent/personality/personality.prompts.ts';
-import {
-  registerExternalServices,
-  registerExternalServiceTools,
-  createServiceFilter,
-} from '../../integrations/external/external.tools.ts';
+import { registerExternalServices, registerExternalServiceTools } from '../../integrations/external/external.tools.ts';
 
+import { collectTools } from './orchestrator.tool-collector.ts';
+import type { ResumeStrategy } from './orchestrator.resume.ts';
+import { getResumeStrategy } from './orchestrator.resume.ts';
 import type {
   OrchestratorConfigInput,
   OrchestratorConfig,
@@ -36,15 +33,9 @@ import type {
 } from './orchestrator.schemas.ts';
 import { orchestratorConfigSchema } from './orchestrator.schemas.ts';
 import { DatabaseCheckpointer } from './orchestrator.checkpointer.ts';
-import { createOrchestratorGraph } from './orchestrator.graph.ts';
-import {
-  createConversation,
-  getConversation,
-  listConversations,
-  deleteConversation,
-  addMessage,
-  getMessages,
-} from './orchestrator.store.ts';
+import { GraphExecutor } from './orchestrator.executor.ts';
+import type { OrchestratorState } from './orchestrator.state.ts';
+import { ConversationStore } from './orchestrator.store.ts';
 import { ConversationNotFoundError, OrchestratorNotConfiguredError } from './orchestrator.errors.ts';
 import { InterruptService } from './interrupts/interrupts.ts';
 import type { Interrupt, InterruptResponse } from './interrupts/interrupts.ts';
@@ -60,6 +51,8 @@ class OrchestratorService {
   #checkpointer: DatabaseCheckpointer | null = null;
   #toolRegistry: ToolRegistry | null = null;
   #interruptService: InterruptService;
+  #conversationStore: ConversationStore;
+  #graphExecutor: GraphExecutor | null = null;
   #memoryService: MemoryService | null = null;
   #skillRegistry: SkillRegistry | null = null;
   #externalServiceRegistry: ExternalServiceRegistry | null = null;
@@ -68,6 +61,7 @@ class OrchestratorService {
   constructor(services: Services) {
     this.#services = services;
     this.#interruptService = new InterruptService(services);
+    this.#conversationStore = new ConversationStore(services.get(DatabaseService).knex);
   }
 
   /**
@@ -99,6 +93,7 @@ class OrchestratorService {
     });
 
     this.#checkpointer = new DatabaseCheckpointer(this.#db());
+    this.#conversationStore.setCheckpointer(this.#checkpointer);
 
     // Initialize tool registry with builtin tools
     this.#toolRegistry = new ToolRegistry(this.#services);
@@ -136,6 +131,15 @@ class OrchestratorService {
       dimensions: 384,
     };
     await this.#memoryService.configure(embeddingConfig);
+
+    // Initialize graph executor
+    this.#graphExecutor = new GraphExecutor({
+      llm: this.#llm,
+      checkpointer: this.#checkpointer,
+      memoryService: this.#memoryService,
+      skillRegistry: this.#skillRegistry,
+      services: this.#services,
+    });
 
     // Initialize log service
     this.#logService = this.#services.get(LogService);
@@ -196,63 +200,201 @@ class OrchestratorService {
   };
 
   /**
-   * Gets the tool IDs from active skills.
-   * Used to filter these out of base tools to avoid duplicates.
+   * Converts stored message history to LangChain BaseMessage array.
    */
-  #getActiveSkillToolIds = (activeSkills: ActiveSkill[]): Set<string> => {
-    if (!this.#skillRegistry) {
-      return new Set();
-    }
+  #convertHistoryToMessages = (history: Message[]): BaseMessage[] => {
+    const messages: BaseMessage[] = [];
 
-    const skillDefinitions = this.#skillRegistry.getActiveSkillDefinitions(activeSkills);
-    const toolIds = new Set<string>();
-
-    for (const skill of skillDefinitions) {
-      for (const tool of skill.tools) {
-        toolIds.add(tool.id);
+    for (const msg of history) {
+      if (msg.role === 'user') {
+        messages.push(new HumanMessage(msg.content));
+      } else if (msg.role === 'assistant') {
+        const aiMsg = new AIMessage(msg.content);
+        if (msg.toolCalls) {
+          (aiMsg as AIMessage).tool_calls = JSON.parse(msg.toolCalls);
+        }
+        messages.push(aiMsg);
+      } else if (msg.role === 'tool') {
+        messages.push(
+          new ToolMessage({
+            content: msg.content,
+            tool_call_id: msg.toolCallId ?? '',
+          }),
+        );
       }
     }
 
-    return toolIds;
+    return messages;
   };
 
   /**
-   * Gets LangChain tools for active skills and registers them with the tool registry.
-   * This ensures skill tools are available to both the LLM and the risk gate.
+   * Handles execution result interrupts.
+   * Returns an interrupt if one is needed, or null to continue processing.
    */
-  #getActiveSkillTools = (
-    activeSkills: ActiveSkill[],
-    toolContext: { userId: string; conversationId: string; services: Services },
-  ): DynamicStructuredTool[] => {
-    if (!this.#skillRegistry || !this.#toolRegistry) {
-      return [];
+  #handleExecutionInterrupts = async (
+    conversationId: string,
+    result: OrchestratorState,
+  ): Promise<{ interrupt?: Interrupt; error?: string } | null> => {
+    // Check for turn limit interrupt
+    if (result.turnLimitReached) {
+      const interrupt = await this.#interruptService.create({
+        conversationId,
+        type: 'turn_limit',
+        prompt: `The conversation has reached ${result.turnCount} turns. Would you like to continue?`,
+        checkpointId: conversationId,
+      });
+      return { interrupt };
     }
 
-    const skillDefinitions = this.#skillRegistry.getActiveSkillDefinitions(activeSkills);
-    const skillTools: DynamicStructuredTool[] = [];
+    // Check for tool approval interrupt
+    if (result.interruptRequired && result.pendingToolCall) {
+      // Check if this is an error (e.g., unknown tool) rather than an approval request
+      if (result.pendingToolCall.isError) {
+        return { error: result.pendingToolCall.riskReason };
+      }
 
-    for (const skill of skillDefinitions) {
-      for (const tool of skill.tools) {
-        // Register with tool registry if not already registered (for risk gate)
-        if (!this.#toolRegistry.has(tool.id)) {
-          this.#toolRegistry.register(tool);
-        }
-        // Convert to LangChain tool
-        const registeredTool = this.#toolRegistry.get(tool.id);
-        if (registeredTool) {
-          skillTools.push(toLangChainTool(registeredTool, toolContext));
+      const interrupt = await this.#interruptService.create({
+        conversationId,
+        type: 'tool_approval',
+        prompt: formatApprovalPrompt(result.pendingToolCall),
+        toolCall: formatToolCallInfo(result.pendingToolCall),
+        checkpointId: conversationId,
+      });
+      return { interrupt };
+    }
+
+    // Check for skill activation interrupt
+    if (result.interruptRequired && result.pendingSkillActivation) {
+      const skill = this.#skillRegistry?.get(result.pendingSkillActivation.skillId);
+      if (skill) {
+        const interrupt = await this.#interruptService.create({
+          conversationId,
+          type: 'skill_activation',
+          prompt: formatSkillActivationPrompt(skill),
+          skillActivation: {
+            skillId: skill.id,
+            skillName: skill.name,
+            activationRisk: skill.activationRisk,
+            activationReason: skill.activationReason,
+            activationParams: result.pendingSkillActivation.activationParams,
+            toolsSummary: skill.tools.map((t) => `${t.id}: ${t.description.split('\n')[0]}`).join('\n'),
+          },
+          checkpointId: conversationId,
+        });
+        return { interrupt };
+      }
+    }
+
+    // No interrupt needed
+    return null;
+  };
+
+  /**
+   * Extracts response content and tool calls from execution result messages.
+   */
+  #extractResponse = (
+    messages: BaseMessage[],
+    priorMessageCount: number,
+  ): { content: string; toolCalls?: string; tokenUsage?: { input_tokens?: number; output_tokens?: number } } => {
+    const lastMessage = messages[messages.length - 1];
+    let content = '';
+
+    if (lastMessage && 'content' in lastMessage) {
+      content = typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
+    }
+
+    // Collect tool_calls from all new AI messages
+    const newMessages = messages.slice(priorMessageCount);
+    const allToolCalls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
+    for (const msg of newMessages) {
+      if ('tool_calls' in msg) {
+        const aiMsg = msg as AIMessage;
+        if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
+          allToolCalls.push(...aiMsg.tool_calls);
         }
       }
     }
 
-    return skillTools;
+    const tokenUsage =
+      lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;
+
+    return {
+      content,
+      toolCalls: allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined,
+      tokenUsage: tokenUsage
+        ? { input_tokens: tokenUsage.input_tokens, output_tokens: tokenUsage.output_tokens }
+        : undefined,
+    };
+  };
+
+  /**
+   * Loads active skills from checkpoint state.
+   */
+  #getActiveSkillsFromCheckpoint = async (conversationId: string): Promise<ActiveSkill[]> => {
+    try {
+      const checkpointTuple = await (this.#checkpointer as DatabaseCheckpointer).getTuple({
+        configurable: { thread_id: conversationId },
+      });
+      if (checkpointTuple?.checkpoint?.channel_values) {
+        const channelValues = checkpointTuple.checkpoint.channel_values as Record<string, unknown>;
+        return (channelValues.activeSkills as ActiveSkill[]) ?? [];
+      }
+    } catch {
+      // No checkpoint state yet, no active skills
+    }
+    return [];
+  };
+
+  /**
+   * Builds the system prompt with context, delta instructions, and skills info.
+   */
+  #buildSystemPrompt = async (conversationId: string, activeSkills: ActiveSkill[]): Promise<string> => {
+    const personality = this.#services.get(PersonalityService);
+    const contextBuilder = this.#services.get(ContextBuilderService);
+    const { context, delta } = await contextBuilder.buildContext({ conversationId });
+    let systemPrompt = await personality.buildSystemPrompt(context);
+
+    // Add delta section if there are significant changes since last snapshot
+    if (delta?.hasSignificantChanges) {
+      const deltaSection = generateDeltaInstructions(delta);
+      if (deltaSection) {
+        systemPrompt = `${systemPrompt}\n\n${deltaSection}`;
+      }
+    }
+
+    // Add available skills context to system prompt
+    const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
+    if (skillsContext) {
+      systemPrompt = `${systemPrompt}\n\n${skillsContext}`;
+    }
+
+    return systemPrompt;
+  };
+
+  /**
+   * Collects tools for graph execution.
+   */
+  #collectExecutionTools = (conversationId: string, activeSkills: ActiveSkill[]) => {
+    const toolContext = {
+      userId: 'default', // TODO: get from user model
+      conversationId,
+      services: this.#services,
+    };
+
+    return collectTools({
+      baseRegistry: this.#toolRegistry as ToolRegistry,
+      skillRegistry: this.#skillRegistry as SkillRegistry,
+      externalServiceRegistry: this.#externalServiceRegistry as ExternalServiceRegistry,
+      activeSkills,
+      toolContext,
+    });
   };
 
   /**
    * Starts a new conversation.
    */
   startConversation = async (options?: { title?: string }): Promise<string> => {
-    const conversation = await createConversation(this.#db(), options);
+    const conversation = await this.#conversationStore.create(options);
     return conversation.id;
   };
 
@@ -260,33 +402,29 @@ class OrchestratorService {
    * Gets a conversation by ID.
    */
   getConversation = async (conversationId: string): Promise<Conversation | null> => {
-    return getConversation(this.#db(), conversationId);
+    return this.#conversationStore.get(conversationId);
   };
 
   /**
    * Lists recent conversations.
    */
   listConversations = async (options?: { limit?: number; offset?: number }): Promise<Conversation[]> => {
-    return listConversations(this.#db(), options);
+    return this.#conversationStore.list(options);
   };
 
   /**
    * Deletes a conversation and all its data.
+   * The ConversationStore handles checkpoint cascade deletion.
    */
   deleteConversation = async (conversationId: string): Promise<boolean> => {
-    // Delete checkpoints
-    if (this.#checkpointer) {
-      await this.#checkpointer.deleteThread(conversationId);
-    }
-    // Delete conversation (cascades to messages)
-    return deleteConversation(this.#db(), conversationId);
+    return this.#conversationStore.delete(conversationId);
   };
 
   /**
    * Gets the message history for a conversation.
    */
   getHistory = async (conversationId: string): Promise<Message[]> => {
-    return getMessages(this.#db(), conversationId);
+    return this.#conversationStore.getMessages(conversationId);
   };
 
   /**
@@ -301,7 +439,7 @@ class OrchestratorService {
     this.#ensureConfigured();
 
     // Verify conversation exists
-    const conversation = await getConversation(this.#db(), conversationId);
+    const conversation = await this.#conversationStore.get(conversationId);
     if (!conversation) {
       throw new ConversationNotFoundError(conversationId);
     }
@@ -315,232 +453,68 @@ class OrchestratorService {
     }
 
     // Store user message
-    await addMessage(this.#db(), conversationId, {
+    await this.#conversationStore.addMessage(conversationId, {
       role: 'user',
       content: message,
     });
 
     try {
-      // Load checkpoint state to get active skills (needed for both system prompt and tools)
-      let activeSkills: ActiveSkill[] = [];
-      try {
-        const checkpointTuple = await (this.#checkpointer as DatabaseCheckpointer).getTuple({
-          configurable: { thread_id: conversationId },
-        });
-        if (checkpointTuple?.checkpoint?.channel_values) {
-          const channelValues = checkpointTuple.checkpoint.channel_values as Record<string, unknown>;
-          activeSkills = (channelValues.activeSkills as ActiveSkill[]) ?? [];
-        }
-      } catch {
-        // No checkpoint state yet, no active skills
-      }
+      // Load checkpoint state to get active skills
+      const activeSkills = await this.#getActiveSkillsFromCheckpoint(conversationId);
 
-      // Build system prompt with context and skills info
-      const personality = this.#services.get(PersonalityService);
-      const contextBuilder = this.#services.get(ContextBuilderService);
-      const { context, delta } = await contextBuilder.buildContext({
-        conversationId: conversation.id,
-      });
-      let systemPrompt = await personality.buildSystemPrompt(context);
-
-      // Add delta section if there are significant changes since last snapshot
-      if (delta?.hasSignificantChanges) {
-        const deltaSection = generateDeltaInstructions(delta);
-        if (deltaSection) {
-          systemPrompt = `${systemPrompt}\n\n${deltaSection}`;
-        }
-      }
-
-      // Add available skills context to system prompt
-      const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
-      if (skillsContext) {
-        systemPrompt = `${systemPrompt}\n\n${skillsContext}`;
-      }
-
-      // Get tools as LangChain tools
-      const toolContext = {
-        userId: 'default', // TODO: get from user model
-        conversationId,
-        services: this.#services,
-      };
-
-      // Get skill tool IDs to filter from base tools (prevents duplicates)
-      const skillToolIds = this.#getActiveSkillToolIds(activeSkills);
-      const serviceFilter = createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry);
-
-      // These are guaranteed non-null by #ensureConfigured() above
-      const baseTools = toLangChainToolsFiltered(
-        this.#toolRegistry as ToolRegistry,
-        toolContext,
-        (tool) => serviceFilter(tool) && !skillToolIds.has(tool.id),
-      );
-
-      // Add skill tools from active skills
-      const skillTools = this.#getActiveSkillTools(activeSkills, toolContext);
-      const tools = [...baseTools, ...skillTools];
-
-      // Create and compile graph with tool registry for risk gate, memory service, and skill registry
-      const graph = createOrchestratorGraph(
-        this.#llm as ChatOpenAI,
-        systemPrompt,
-        tools,
-        this.#toolRegistry as ToolRegistry,
-        undefined, // approvalLevels - use defaults
-        this.#memoryService ?? undefined,
-        this.#skillRegistry ?? undefined,
-        this.#services,
-      );
-      const compiledGraph = graph.compile({
-        checkpointer: this.#checkpointer as DatabaseCheckpointer,
-      });
+      // Build system prompt and collect tools
+      const systemPrompt = await this.#buildSystemPrompt(conversationId, activeSkills);
+      const { tools, toolLookup } = this.#collectExecutionTools(conversationId, activeSkills);
 
       // Load existing messages from history for this conversation
-      const history = await getMessages(this.#db(), conversationId);
-      const historyMessages: BaseMessage[] = [];
+      const history = await this.#conversationStore.getMessages(conversationId);
+      const historyMessages: BaseMessage[] = this.#convertHistoryToMessages(history);
 
-      for (const msg of history) {
-        if (msg.role === 'user') {
-          historyMessages.push(new HumanMessage(msg.content));
-        } else if (msg.role === 'assistant') {
-          const aiMsg = new AIMessage(msg.content);
-          if (msg.toolCalls) {
-            (aiMsg as AIMessage).tool_calls = JSON.parse(msg.toolCalls);
-          }
-          historyMessages.push(aiMsg);
-        } else if (msg.role === 'tool') {
-          historyMessages.push(
-            new ToolMessage({
-              content: msg.content,
-              tool_call_id: msg.toolCallId ?? '',
-            }),
-          );
-        }
-      }
-
-      // Invoke the graph
-      // Use a high recursionLimit since we have our own turn counter
-      // Each turn involves multiple node visits (memory → turn_counter → router → risk_gate → tools)
-      const result = await compiledGraph.invoke(
+      // Execute the graph
+      const executionResult = await (this.#graphExecutor as GraphExecutor).execute(
         {
           conversationId,
-          messages: historyMessages,
-          turnCount: 0,
-          maxTurns: 20,
-          turnLimitReached: false,
+          systemPrompt,
+          tools,
+          toolLookup,
         },
         {
-          configurable: { thread_id: conversationId },
-          recursionLimit: 150, // Allow up to ~30 turns (5 nodes per turn)
+          messages: historyMessages,
+          activeSkills,
         },
       );
+      const result = executionResult.state;
 
-      // Check if graph halted for a turn limit interrupt
-      if (result.turnLimitReached) {
-        const interrupt = await this.#interruptService.create({
-          conversationId,
-          type: 'turn_limit',
-          prompt: `The conversation has reached ${result.turnCount} turns. Would you like to continue?`,
-          checkpointId: conversationId,
-        });
-
-        yield { type: 'interrupt', interrupt };
+      // Handle any interrupts from execution
+      const interruptResult = await this.#handleExecutionInterrupts(conversationId, result);
+      if (interruptResult) {
+        if (interruptResult.error) {
+          yield { type: 'error', error: interruptResult.error };
+        } else if (interruptResult.interrupt) {
+          yield { type: 'interrupt', interrupt: interruptResult.interrupt };
+        }
         return;
       }
 
-      // Check if graph halted for a tool approval interrupt
-      if (result.interruptRequired && result.pendingToolCall) {
-        // Check if this is an error (e.g., unknown tool) rather than an approval request
-        if (result.pendingToolCall.isError) {
-          // Return an error message to the LLM by yielding an error chunk
-          // The error message is already in riskReason
-          yield {
-            type: 'error',
-            error: result.pendingToolCall.riskReason,
-          };
-          return;
-        }
+      // Extract and store response
+      const response = this.#extractResponse(result.messages, historyMessages.length);
 
-        // Create the interrupt in the database
-        const interrupt = await this.#interruptService.create({
-          conversationId,
-          type: 'tool_approval',
-          prompt: formatApprovalPrompt(result.pendingToolCall),
-          toolCall: formatToolCallInfo(result.pendingToolCall),
-          checkpointId: conversationId, // Use conversation ID as checkpoint reference
-        });
-
-        yield { type: 'interrupt', interrupt };
-        return;
+      if (response.content) {
+        yield { type: 'token', content: response.content };
       }
 
-      // Check if graph halted for a skill activation interrupt
-      if (result.interruptRequired && result.pendingSkillActivation) {
-        const skill = this.#skillRegistry?.get(result.pendingSkillActivation.skillId);
-        if (skill) {
-          const interrupt = await this.#interruptService.create({
-            conversationId,
-            type: 'skill_activation',
-            prompt: formatSkillActivationPrompt(skill),
-            skillActivation: {
-              skillId: skill.id,
-              skillName: skill.name,
-              activationRisk: skill.activationRisk,
-              activationReason: skill.activationReason,
-              activationParams: result.pendingSkillActivation.activationParams,
-              toolsSummary: skill.tools.map((t) => `${t.id}: ${t.description.split('\n')[0]}`).join('\n'),
-            },
-            checkpointId: conversationId,
-          });
-
-          yield { type: 'interrupt', interrupt };
-          return;
-        }
-      }
-
-      // Extract the response from the last message
-      const lastMessage = result.messages[result.messages.length - 1];
-      let responseContent = '';
-
-      if (lastMessage && 'content' in lastMessage) {
-        responseContent =
-          typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
-      }
-
-      // Collect tool_calls from all new AI messages (not just the last one)
-      // The last message might be a text response after tool execution
-      const newMessages = result.messages.slice(historyMessages.length);
-      const allToolCalls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
-      for (const msg of newMessages) {
-        if ('tool_calls' in msg) {
-          const aiMsg = msg as AIMessage;
-          if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
-            allToolCalls.push(...aiMsg.tool_calls);
-          }
-        }
-      }
-      const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
-
-      // Yield tokens (for now, yield the whole response at once)
-      if (responseContent) {
-        yield { type: 'token', content: responseContent };
-      }
-
-      // Store assistant message
-      const tokenUsage =
-        lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;
-
-      await addMessage(this.#db(), conversationId, {
+      await this.#conversationStore.addMessage(conversationId, {
         role: 'assistant',
-        content: responseContent,
-        toolCalls,
-        inputTokens: tokenUsage?.input_tokens,
-        outputTokens: tokenUsage?.output_tokens,
+        content: response.content,
+        toolCalls: response.toolCalls,
+        inputTokens: response.tokenUsage?.input_tokens,
+        outputTokens: response.tokenUsage?.output_tokens,
       });
 
       yield {
         type: 'done',
-        inputTokens: tokenUsage?.input_tokens,
-        outputTokens: tokenUsage?.output_tokens,
+        inputTokens: response.tokenUsage?.input_tokens,
+        outputTokens: response.tokenUsage?.output_tokens,
       };
     } catch (error) {
       // Log full error details for debugging
@@ -591,7 +565,7 @@ class OrchestratorService {
         yield* this.#resumeAfterSkillActivation(resolvedInterrupt);
       } else {
         // Skill activation was denied - inform the agent
-        yield* this.#handleDeniedSkillActivation(resolvedInterrupt);
+        yield* this.#handleDenial(resolvedInterrupt);
       }
       return;
     }
@@ -601,7 +575,7 @@ class OrchestratorService {
       yield* this.#resumeAfterApproval(resolvedInterrupt);
     } else {
       // Tool was denied - inform the agent
-      yield* this.#handleDeniedTool(resolvedInterrupt);
+      yield* this.#handleDenial(resolvedInterrupt);
     }
   };
 
@@ -645,411 +619,151 @@ class OrchestratorService {
   };
 
   /**
-   * Resumes graph execution after tool approval.
+   * Unified method for resuming graph execution after an approval interrupt.
+   *
+   * Handles tool_approval, turn_limit, and skill_activation interrupts using
+   * a strategy pattern to customize the state updates for each type.
+   *
+   * Common steps:
+   * 1. Load checkpoint state to get active skills
+   * 2. Apply strategy.modifyActiveSkills if present (e.g., for skill activation)
+   * 3. Build system prompt with context, delta, and skills info
+   * 4. Collect tools via ToolCollector
+   * 5. Create and compile graph
+   * 6. Get current checkpoint state and apply strategy.prepareStateUpdate
+   * 7. Invoke graph with state updates
+   * 8. Handle nested interrupts
+   * 9. Extract and store response
    */
-  #resumeAfterApproval = async function* (this: OrchestratorService, interrupt: Interrupt): AsyncGenerator<ChatChunk> {
+  #resumeWithStrategy = async function* (
+    this: OrchestratorService,
+    interrupt: Interrupt,
+    strategy: ResumeStrategy,
+  ): AsyncGenerator<ChatChunk> {
     this.#ensureConfigured();
 
     const conversationId = interrupt.conversationId;
 
     try {
-      // Load checkpoint state to get active skills (needed for both system prompt and tools)
-      let activeSkills: ActiveSkill[] = [];
-      try {
-        const checkpointTuple = await (this.#checkpointer as DatabaseCheckpointer).getTuple({
-          configurable: { thread_id: conversationId },
-        });
-        if (checkpointTuple?.checkpoint?.channel_values) {
-          const channelValues = checkpointTuple.checkpoint.channel_values as Record<string, unknown>;
-          activeSkills = (channelValues.activeSkills as ActiveSkill[]) ?? [];
-        }
-      } catch {
-        // No checkpoint state yet, no active skills
+      // 1. Load checkpoint state to get active skills
+      let activeSkills = await this.#getActiveSkillsFromCheckpoint(conversationId);
+
+      // 2. Apply modifyActiveSkills if the strategy has it (e.g., for skill activation)
+      if (strategy.modifyActiveSkills) {
+        activeSkills = strategy.modifyActiveSkills(activeSkills, interrupt);
       }
 
-      // Build system prompt with context and skills info
-      const personality = this.#services.get(PersonalityService);
-      const contextBuilder = this.#services.get(ContextBuilderService);
-      const { context, delta } = await contextBuilder.buildContext({
-        conversationId,
-      });
-      let systemPrompt = await personality.buildSystemPrompt(context);
+      // 3. Build system prompt and collect tools
+      const systemPrompt = await this.#buildSystemPrompt(conversationId, activeSkills);
+      const { tools, toolLookup } = this.#collectExecutionTools(conversationId, activeSkills);
 
-      // Add delta section if there are significant changes since last snapshot
-      if (delta?.hasSignificantChanges) {
-        const deltaSection = generateDeltaInstructions(delta);
-        if (deltaSection) {
-          systemPrompt = `${systemPrompt}\n\n${deltaSection}`;
-        }
-      }
+      // 4. Get current checkpoint state and prepare state updates
+      const currentState = await (this.#graphExecutor as GraphExecutor).getState(conversationId);
+      const priorMessageCount = (currentState as OrchestratorState)?.messages?.length ?? 0;
+      const stateUpdates = strategy.prepareStateUpdate(interrupt, currentState as OrchestratorState);
 
-      // Add available skills context to system prompt
-      const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
-      if (skillsContext) {
-        systemPrompt = `${systemPrompt}\n\n${skillsContext}`;
-      }
-
-      // Get tools as LangChain tools
-      const toolContext = {
-        userId: 'default',
-        conversationId,
-        services: this.#services,
-      };
-
-      // Get skill tool IDs to filter from base tools (prevents duplicates)
-      const skillToolIds = this.#getActiveSkillToolIds(activeSkills);
-      const serviceFilter = createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry);
-
-      const baseTools = toLangChainToolsFiltered(
-        this.#toolRegistry as ToolRegistry,
-        toolContext,
-        (tool) => serviceFilter(tool) && !skillToolIds.has(tool.id),
-      );
-
-      // Add skill tools from active skills
-      const skillTools = this.#getActiveSkillTools(activeSkills, toolContext);
-      const tools = [...baseTools, ...skillTools];
-
-      // Create and compile graph
-      const graph = createOrchestratorGraph(
-        this.#llm as ChatOpenAI,
-        systemPrompt,
-        tools,
-        this.#toolRegistry as ToolRegistry,
-        undefined, // approvalLevels - use defaults
-        this.#memoryService ?? undefined,
-        this.#skillRegistry ?? undefined,
-        this.#services,
-      );
-      const compiledGraph = graph.compile({
-        checkpointer: this.#checkpointer as DatabaseCheckpointer,
-      });
-
-      // Create approved tool call from interrupt
-      const approvedToolCall = interrupt.toolCall
-        ? {
-            id: interrupt.toolCall.toolId,
-            name: interrupt.toolCall.toolName,
-            args: interrupt.toolCall.input as Record<string, unknown>,
-          }
-        : null;
-
-      // Get the current checkpoint state to preserve messages
-      const currentState = await compiledGraph.getState({
-        configurable: { thread_id: conversationId },
-      });
-
-      // Get existing messages from checkpoint (preserves tool calls and results)
-      const checkpointMessages = currentState.values?.messages ?? [];
-
-      // Get existing approved tool calls from checkpoint and merge with newly approved
-      const existingApproved = currentState.values?.approvedToolCalls ?? [];
-      const mergedApproved = approvedToolCall ? [...existingApproved, approvedToolCall] : existingApproved;
-
-      // Invoke with merged approved tool calls, preserving checkpoint messages
-      const result = await compiledGraph.invoke(
+      // 6. Resume execution with state updates
+      const executionResult = await (this.#graphExecutor as GraphExecutor).resume(
         {
           conversationId,
-          messages: checkpointMessages,
-          approvedToolCalls: mergedApproved,
-          interruptRequired: false,
-          pendingToolCall: null,
+          systemPrompt,
+          tools,
+          toolLookup,
         },
         {
-          configurable: { thread_id: conversationId },
-          recursionLimit: 150,
+          stateUpdates,
+          activeSkills: strategy.modifyActiveSkills ? activeSkills : undefined,
         },
       );
+      const result = executionResult.state;
 
-      // Check for turn limit interrupt
-      if (result.turnLimitReached) {
-        const newInterrupt = await this.#interruptService.create({
-          conversationId,
-          type: 'turn_limit',
-          prompt: `The conversation has reached ${result.turnCount} turns. Would you like to continue?`,
-          checkpointId: conversationId,
-        });
-
-        yield { type: 'interrupt', interrupt: newInterrupt };
+      // 8. Handle any nested interrupts
+      const interruptResult = await this.#handleExecutionInterrupts(conversationId, result);
+      if (interruptResult) {
+        if (interruptResult.error) {
+          yield { type: 'error', error: interruptResult.error };
+        } else if (interruptResult.interrupt) {
+          yield { type: 'interrupt', interrupt: interruptResult.interrupt };
+        }
         return;
       }
 
-      // Check for tool approval interrupt
-      if (result.interruptRequired && result.pendingToolCall) {
-        const newInterrupt = await this.#interruptService.create({
-          conversationId,
-          type: 'tool_approval',
-          prompt: formatApprovalPrompt(result.pendingToolCall),
-          toolCall: formatToolCallInfo(result.pendingToolCall),
-          checkpointId: conversationId,
-        });
+      // 9. Extract and store response
+      const response = this.#extractResponse(result.messages, priorMessageCount);
 
-        yield { type: 'interrupt', interrupt: newInterrupt };
-        return;
+      if (response.content) {
+        yield { type: 'token', content: response.content };
       }
 
-      // Extract response
-      const lastMessage = result.messages[result.messages.length - 1];
-      let responseContent = '';
-
-      if (lastMessage && 'content' in lastMessage) {
-        responseContent =
-          typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
-      }
-
-      // Collect tool_calls from all new AI messages (not just the last one)
-      const newMessages = result.messages.slice(checkpointMessages.length);
-      const allToolCalls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
-      for (const msg of newMessages) {
-        if ('tool_calls' in msg) {
-          const aiMsg = msg as AIMessage;
-          if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
-            allToolCalls.push(...aiMsg.tool_calls);
-          }
-        }
-      }
-      const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
-
-      if (responseContent) {
-        yield { type: 'token', content: responseContent };
-      }
-
-      // Store assistant message
-      const tokenUsage =
-        lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;
-
-      await addMessage(this.#db(), conversationId, {
+      await this.#conversationStore.addMessage(conversationId, {
         role: 'assistant',
-        content: responseContent,
-        toolCalls,
-        inputTokens: tokenUsage?.input_tokens,
-        outputTokens: tokenUsage?.output_tokens,
+        content: response.content,
+        toolCalls: response.toolCalls,
+        inputTokens: response.tokenUsage?.input_tokens,
+        outputTokens: response.tokenUsage?.output_tokens,
       });
 
       yield {
         type: 'done',
-        inputTokens: tokenUsage?.input_tokens,
-        outputTokens: tokenUsage?.output_tokens,
+        inputTokens: response.tokenUsage?.input_tokens,
+        outputTokens: response.tokenUsage?.output_tokens,
       };
     } catch (error) {
-      // Log full error details for debugging
-      this.#logService?.error('orchestrator', 'Resume after approval failed', error, {
+      this.#logService?.error('orchestrator', `Resume with strategy failed (${interrupt.type})`, error, {
         conversationId,
       });
 
       const errorMessage = error instanceof Error ? error.message : String(error);
       yield { type: 'error', error: errorMessage };
     }
+  };
+
+  /**
+   * Resumes graph execution after tool approval.
+   * Delegates to the unified #resumeWithStrategy method.
+   */
+  #resumeAfterApproval = async function* (this: OrchestratorService, interrupt: Interrupt): AsyncGenerator<ChatChunk> {
+    const strategy = getResumeStrategy('tool_approval');
+    if (!strategy) {
+      yield { type: 'error', error: 'No strategy found for tool_approval' };
+      return;
+    }
+    yield* this.#resumeWithStrategy(interrupt, strategy);
   };
 
   /**
    * Resumes graph execution after turn limit approval.
-   * Resets the turn counter and continues execution.
+   * Delegates to the unified #resumeWithStrategy method.
    */
   #resumeAfterTurnLimit = async function* (this: OrchestratorService, interrupt: Interrupt): AsyncGenerator<ChatChunk> {
-    this.#ensureConfigured();
-
-    const conversationId = interrupt.conversationId;
-
-    try {
-      // Load checkpoint state to get active skills (needed for both system prompt and tools)
-      let activeSkills: ActiveSkill[] = [];
-      try {
-        const checkpointTuple = await (this.#checkpointer as DatabaseCheckpointer).getTuple({
-          configurable: { thread_id: conversationId },
-        });
-        if (checkpointTuple?.checkpoint?.channel_values) {
-          const channelValues = checkpointTuple.checkpoint.channel_values as Record<string, unknown>;
-          activeSkills = (channelValues.activeSkills as ActiveSkill[]) ?? [];
-        }
-      } catch {
-        // No checkpoint state yet, no active skills
-      }
-
-      // Build system prompt with context and skills info
-      const personality = this.#services.get(PersonalityService);
-      const contextBuilder = this.#services.get(ContextBuilderService);
-      const { context, delta } = await contextBuilder.buildContext({
-        conversationId,
-      });
-      let systemPrompt = await personality.buildSystemPrompt(context);
-
-      // Add delta section if there are significant changes since last snapshot
-      if (delta?.hasSignificantChanges) {
-        const deltaSection = generateDeltaInstructions(delta);
-        if (deltaSection) {
-          systemPrompt = `${systemPrompt}\n\n${deltaSection}`;
-        }
-      }
-
-      // Add available skills context to system prompt
-      const skillsContext = generateAvailableSkillsContext(activeSkills, this.#skillRegistry as SkillRegistry);
-      if (skillsContext) {
-        systemPrompt = `${systemPrompt}\n\n${skillsContext}`;
-      }
-
-      // Get tools as LangChain tools
-      const toolContext = {
-        userId: 'default',
-        conversationId,
-        services: this.#services,
-      };
-
-      // Get skill tool IDs to filter from base tools (prevents duplicates)
-      const skillToolIds = this.#getActiveSkillToolIds(activeSkills);
-      const serviceFilter = createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry);
-
-      const baseTools = toLangChainToolsFiltered(
-        this.#toolRegistry as ToolRegistry,
-        toolContext,
-        (tool) => serviceFilter(tool) && !skillToolIds.has(tool.id),
-      );
-
-      // Add skill tools from active skills
-      const skillTools = this.#getActiveSkillTools(activeSkills, toolContext);
-      const tools = [...baseTools, ...skillTools];
-
-      // Create and compile graph
-      const graph = createOrchestratorGraph(
-        this.#llm as ChatOpenAI,
-        systemPrompt,
-        tools,
-        this.#toolRegistry as ToolRegistry,
-        undefined,
-        this.#memoryService ?? undefined,
-        this.#skillRegistry ?? undefined,
-        this.#services,
-      );
-      const compiledGraph = graph.compile({
-        checkpointer: this.#checkpointer as DatabaseCheckpointer,
-      });
-
-      // Get the current checkpoint state
-      const currentState = await compiledGraph.getState({
-        configurable: { thread_id: conversationId },
-      });
-
-      // Get existing messages from checkpoint
-      const checkpointMessages = currentState.values?.messages ?? [];
-
-      // Reset the turn count and continue
-      const result = await compiledGraph.invoke(
-        {
-          conversationId,
-          messages: checkpointMessages,
-          turnCount: 0, // Reset turn count
-          turnLimitReached: false,
-          interruptRequired: false,
-        },
-        {
-          configurable: { thread_id: conversationId },
-          recursionLimit: 150,
-        },
-      );
-
-      // Check for another turn limit
-      if (result.turnLimitReached) {
-        const newInterrupt = await this.#interruptService.create({
-          conversationId,
-          type: 'turn_limit',
-          prompt: `The conversation has reached ${result.turnCount} more turns. Would you like to continue?`,
-          checkpointId: conversationId,
-        });
-
-        yield { type: 'interrupt', interrupt: newInterrupt };
-        return;
-      }
-
-      // Check for tool approval interrupt
-      if (result.interruptRequired && result.pendingToolCall) {
-        const newInterrupt = await this.#interruptService.create({
-          conversationId,
-          type: 'tool_approval',
-          prompt: formatApprovalPrompt(result.pendingToolCall),
-          toolCall: formatToolCallInfo(result.pendingToolCall),
-          checkpointId: conversationId,
-        });
-
-        yield { type: 'interrupt', interrupt: newInterrupt };
-        return;
-      }
-
-      // Extract response
-      const lastMessage = result.messages[result.messages.length - 1];
-      let responseContent = '';
-
-      if (lastMessage && 'content' in lastMessage) {
-        responseContent =
-          typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
-      }
-
-      // Collect tool_calls from all new AI messages (not just the last one)
-      const newMessages = result.messages.slice(checkpointMessages.length);
-      const allToolCalls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
-      for (const msg of newMessages) {
-        if ('tool_calls' in msg) {
-          const aiMsg = msg as AIMessage;
-          if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
-            allToolCalls.push(...aiMsg.tool_calls);
-          }
-        }
-      }
-      const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
-
-      if (responseContent) {
-        yield { type: 'token', content: responseContent };
-      }
-
-      // Store assistant message
-      const tokenUsage =
-        lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;
-
-      await addMessage(this.#db(), conversationId, {
-        role: 'assistant',
-        content: responseContent,
-        toolCalls,
-        inputTokens: tokenUsage?.input_tokens,
-        outputTokens: tokenUsage?.output_tokens,
-      });
-
-      yield {
-        type: 'done',
-        inputTokens: tokenUsage?.input_tokens,
-        outputTokens: tokenUsage?.output_tokens,
-      };
-    } catch (error) {
-      // Log full error details for debugging
-      this.#logService?.error('orchestrator', 'Resume after turn limit failed', error, {
-        conversationId,
-      });
-
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      yield { type: 'error', error: errorMessage };
+    const strategy = getResumeStrategy('turn_limit');
+    if (!strategy) {
+      yield { type: 'error', error: 'No strategy found for turn_limit' };
+      return;
     }
+    yield* this.#resumeWithStrategy(interrupt, strategy);
   };
 
   /**
-   * Handles a denied tool by informing the agent.
+   * Handles a denied action (tool or skill) by informing the agent.
    */
-  #handleDeniedTool = async function* (this: OrchestratorService, interrupt: Interrupt): AsyncGenerator<ChatChunk> {
+  #handleDenial = async function* (this: OrchestratorService, interrupt: Interrupt): AsyncGenerator<ChatChunk> {
     this.#ensureConfigured();
 
     const conversationId = interrupt.conversationId;
-    const toolName = interrupt.toolCall?.toolName ?? 'the tool';
     const freeformResponse = interrupt.response?.freeformResponse;
+    const itemType = interrupt.type === 'skill_activation' ? 'skill' : 'tool';
+    const itemName =
+      interrupt.type === 'skill_activation'
+        ? (interrupt.skillActivation?.skillName ?? 'the skill')
+        : (interrupt.toolCall?.toolName ?? 'the tool');
 
-    // Create a message explaining the denial
+    const actionVerb = interrupt.type === 'skill_activation' ? 'activation of' : 'execution of';
     const denialMessage = freeformResponse
-      ? `The user denied the execution of ${toolName} and said: "${freeformResponse}"`
-      : `The user denied the execution of ${toolName}. Please try a different approach.`;
+      ? `The user denied the ${actionVerb} ${itemName} ${itemType} and said: "${freeformResponse}"`
+      : `The user denied the ${actionVerb} ${itemName} ${itemType}. Please try a different approach.`;
 
-    // Store the denial as a user message
-    await addMessage(this.#db(), conversationId, {
-      role: 'user',
-      content: denialMessage,
-    });
-
-    // Continue chat with the denial context
+    await this.#conversationStore.addMessage(conversationId, { role: 'user', content: denialMessage });
     yield* this.chat(conversationId, '');
   };
 
@@ -1060,249 +774,16 @@ class OrchestratorService {
     this: OrchestratorService,
     interrupt: Interrupt,
   ): AsyncGenerator<ChatChunk> {
-    this.#ensureConfigured();
-
-    const conversationId = interrupt.conversationId;
-    const skillInfo = interrupt.skillActivation;
-
-    if (!skillInfo) {
+    if (!interrupt.skillActivation) {
       yield { type: 'error', error: 'Skill activation info missing from interrupt' };
       return;
     }
-
-    try {
-      // Build system prompt with context
-      const personality = this.#services.get(PersonalityService);
-      const contextBuilder = this.#services.get(ContextBuilderService);
-      const { context, delta } = await contextBuilder.buildContext({
-        conversationId,
-      });
-      let systemPrompt = await personality.buildSystemPrompt(context);
-
-      // Add delta section if there are significant changes since last snapshot
-      if (delta?.hasSignificantChanges) {
-        const deltaSection = generateDeltaInstructions(delta);
-        if (deltaSection) {
-          systemPrompt = `${systemPrompt}\n\n${deltaSection}`;
-        }
-      }
-
-      // Get tools as LangChain tools
-      const toolContext = {
-        userId: 'default',
-        conversationId,
-        services: this.#services,
-      };
-      const baseTools = toLangChainToolsFiltered(
-        this.#toolRegistry as ToolRegistry,
-        toolContext,
-        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
-      );
-
-      // Load checkpoint state to get existing active skills directly from checkpointer
-      let existingActiveSkills: ActiveSkill[] = [];
-      try {
-        const checkpointTuple = await (this.#checkpointer as DatabaseCheckpointer).getTuple({
-          configurable: { thread_id: conversationId },
-        });
-        if (checkpointTuple?.checkpoint?.channel_values) {
-          const channelValues = checkpointTuple.checkpoint.channel_values as Record<string, unknown>;
-          existingActiveSkills = (channelValues.activeSkills as ActiveSkill[]) ?? [];
-        }
-      } catch {
-        // No checkpoint state yet, no active skills
-      }
-
-      // Include tools from existing active skills + the skill being activated
-      const newActiveSkill: ActiveSkill = {
-        id: skillInfo.skillId,
-        activatedAt: new Date().toISOString(),
-        activationParams: skillInfo.activationParams,
-      };
-      const allActiveSkills = [...existingActiveSkills, newActiveSkill];
-      const skillTools = this.#getActiveSkillTools(allActiveSkills, toolContext);
-      const tools = [...baseTools, ...skillTools];
-
-      // Create and compile graph with skill tools included
-      const graph = createOrchestratorGraph(
-        this.#llm as ChatOpenAI,
-        systemPrompt,
-        tools,
-        this.#toolRegistry as ToolRegistry,
-        undefined,
-        this.#memoryService ?? undefined,
-        this.#skillRegistry ?? undefined,
-        this.#services,
-      );
-      const compiledGraph = graph.compile({
-        checkpointer: this.#checkpointer as DatabaseCheckpointer,
-      });
-
-      // Get the current checkpoint state
-      const currentState = await compiledGraph.getState({
-        configurable: { thread_id: conversationId },
-      });
-
-      // Get existing messages from checkpoint
-      const checkpointMessages = currentState.values?.messages ?? [];
-
-      // Use handleSkillActivationApproval to properly activate the skill
-      const skillActivationUpdate = await handleSkillActivationApproval(
-        {
-          ...currentState.values,
-          pendingSkillActivation: {
-            skillId: skillInfo.skillId,
-            activationParams: skillInfo.activationParams,
-          },
-        },
-        this.#skillRegistry as SkillRegistry,
-        this.#services,
-      );
-
-      // Resume with the activated skill
-      const result = await compiledGraph.invoke(
-        {
-          conversationId,
-          messages: checkpointMessages,
-          activeSkills: skillActivationUpdate.activeSkills ?? allActiveSkills,
-          pendingSkillActivation: null,
-          interruptRequired: false,
-        },
-        {
-          configurable: { thread_id: conversationId },
-          recursionLimit: 150,
-        },
-      );
-
-      // Check for additional interrupts
-      if (result.turnLimitReached) {
-        const newInterrupt = await this.#interruptService.create({
-          conversationId,
-          type: 'turn_limit',
-          prompt: `The conversation has reached ${result.turnCount} turns. Would you like to continue?`,
-          checkpointId: conversationId,
-        });
-
-        yield { type: 'interrupt', interrupt: newInterrupt };
-        return;
-      }
-
-      if (result.interruptRequired && result.pendingToolCall) {
-        const newInterrupt = await this.#interruptService.create({
-          conversationId,
-          type: 'tool_approval',
-          prompt: formatApprovalPrompt(result.pendingToolCall),
-          toolCall: formatToolCallInfo(result.pendingToolCall),
-          checkpointId: conversationId,
-        });
-
-        yield { type: 'interrupt', interrupt: newInterrupt };
-        return;
-      }
-
-      if (result.interruptRequired && result.pendingSkillActivation) {
-        const skill = this.#skillRegistry?.get(result.pendingSkillActivation.skillId);
-        if (skill) {
-          const newInterrupt = await this.#interruptService.create({
-            conversationId,
-            type: 'skill_activation',
-            prompt: formatSkillActivationPrompt(skill),
-            skillActivation: {
-              skillId: skill.id,
-              skillName: skill.name,
-              activationRisk: skill.activationRisk,
-              activationReason: skill.activationReason,
-              activationParams: result.pendingSkillActivation.activationParams,
-              toolsSummary: skill.tools.map((t) => `${t.id}: ${t.description.split('\n')[0]}`).join('\n'),
-            },
-            checkpointId: conversationId,
-          });
-
-          yield { type: 'interrupt', interrupt: newInterrupt };
-          return;
-        }
-      }
-
-      // Extract response
-      const lastMessage = result.messages[result.messages.length - 1];
-      let responseContent = '';
-
-      if (lastMessage && 'content' in lastMessage) {
-        responseContent =
-          typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
-      }
-
-      // Collect tool_calls from new messages
-      const newMessages = result.messages.slice(checkpointMessages.length);
-      const allToolCalls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
-      for (const msg of newMessages) {
-        if ('tool_calls' in msg) {
-          const aiMsg = msg as AIMessage;
-          if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
-            allToolCalls.push(...aiMsg.tool_calls);
-          }
-        }
-      }
-      const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
-
-      if (responseContent) {
-        yield { type: 'token', content: responseContent };
-      }
-
-      // Store assistant message
-      const tokenUsage =
-        lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;
-
-      await addMessage(this.#db(), conversationId, {
-        role: 'assistant',
-        content: responseContent,
-        toolCalls,
-        inputTokens: tokenUsage?.input_tokens,
-        outputTokens: tokenUsage?.output_tokens,
-      });
-
-      yield {
-        type: 'done',
-        inputTokens: tokenUsage?.input_tokens,
-        outputTokens: tokenUsage?.output_tokens,
-      };
-    } catch (error) {
-      // Log full error details for debugging
-      this.#logService?.error('orchestrator', 'Resume after skill activation failed', error, {
-        conversationId,
-      });
-
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      yield { type: 'error', error: errorMessage };
+    const strategy = getResumeStrategy('skill_activation');
+    if (!strategy) {
+      yield { type: 'error', error: 'No strategy found for skill_activation' };
+      return;
     }
-  };
-
-  /**
-   * Handles a denied skill activation by informing the agent.
-   */
-  #handleDeniedSkillActivation = async function* (
-    this: OrchestratorService,
-    interrupt: Interrupt,
-  ): AsyncGenerator<ChatChunk> {
-    this.#ensureConfigured();
-
-    const conversationId = interrupt.conversationId;
-    const skillName = interrupt.skillActivation?.skillName ?? 'the skill';
-    const freeformResponse = interrupt.response?.freeformResponse;
-
-    // Create a message explaining the denial
-    const denialMessage = freeformResponse
-      ? `The user denied the activation of ${skillName} skill and said: "${freeformResponse}"`
-      : `The user denied the activation of ${skillName} skill. Please try a different approach.`;
-
-    // Store the denial as a user message
-    await addMessage(this.#db(), conversationId, {
-      role: 'user',
-      content: denialMessage,
-    });
-
-    // Continue chat with the denial context
-    yield* this.chat(conversationId, '');
+    yield* this.#resumeWithStrategy(interrupt, strategy);
   };
 
   /**
@@ -1337,7 +818,7 @@ class OrchestratorService {
     if (response.approved) {
       yield* this.#resumeAfterApproval(resolvedInterrupt);
     } else {
-      yield* this.#handleDeniedTool(resolvedInterrupt);
+      yield* this.#handleDenial(resolvedInterrupt);
     }
   };
 
@@ -1362,7 +843,7 @@ class OrchestratorService {
       const { context } = await contextBuilder.buildContext();
       const systemPrompt = await personality.buildSystemPrompt(context, 'default', triggerContext);
 
-      // Get tools as LangChain tools with trigger context
+      // Collect tools for this trigger invocation (no active skills for background tasks)
       const toolContext = {
         userId: 'default',
         conversationId,
@@ -1370,76 +851,44 @@ class OrchestratorService {
         triggerId: triggerContext.triggerId,
         triggerName: triggerContext.triggerName,
       };
-      const tools = toLangChainToolsFiltered(
-        this.#toolRegistry as ToolRegistry,
-        toolContext,
-        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
-      );
 
-      // Create and compile graph
-      const graph = createOrchestratorGraph(
-        this.#llm as ChatOpenAI,
-        systemPrompt,
-        tools,
-        this.#toolRegistry as ToolRegistry,
-        undefined,
-        this.#memoryService ?? undefined,
-        this.#skillRegistry ?? undefined,
-        this.#services,
-      );
-      const compiledGraph = graph.compile({
-        checkpointer: this.#checkpointer as DatabaseCheckpointer,
+      const { tools, toolLookup } = collectTools({
+        baseRegistry: this.#toolRegistry as ToolRegistry,
+        skillRegistry: this.#skillRegistry as SkillRegistry,
+        externalServiceRegistry: this.#externalServiceRegistry as ExternalServiceRegistry,
+        activeSkills: [], // Background tasks don't have active skills
+        toolContext,
       });
 
       // Store the goal as a user message
-      await addMessage(this.#db(), conversationId, {
+      await this.#conversationStore.addMessage(conversationId, {
         role: 'user',
         content: goal,
       });
 
-      // Run the graph with the goal
-      const result = await compiledGraph.invoke(
+      // Execute the graph with the goal
+      const executionResult = await (this.#graphExecutor as GraphExecutor).execute(
         {
           conversationId,
-          messages: [new HumanMessage(goal)],
-          turnCount: 0,
-          maxTurns: 20,
-          turnLimitReached: false,
+          systemPrompt,
+          tools,
+          toolLookup,
         },
         {
-          configurable: { thread_id: conversationId },
-          recursionLimit: 150,
+          messages: [new HumanMessage(goal)],
         },
       );
+      const result = executionResult.state;
 
-      // Extract and store the response
-      const lastMessage = result.messages[result.messages.length - 1];
-      if (lastMessage && 'content' in lastMessage) {
-        const responseContent =
-          typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
-
-        // Collect tool_calls from all new AI messages (skip the initial HumanMessage)
-        const newMessages = result.messages.slice(1);
-        const allToolCalls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
-        for (const msg of newMessages) {
-          if ('tool_calls' in msg) {
-            const aiMsg = msg as AIMessage;
-            if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
-              allToolCalls.push(...aiMsg.tool_calls);
-            }
-          }
-        }
-        const toolCalls = allToolCalls.length > 0 ? JSON.stringify(allToolCalls) : undefined;
-
-        const tokenUsage =
-          lastMessage && 'usage_metadata' in lastMessage ? (lastMessage as AIMessage).usage_metadata : undefined;
-
-        await addMessage(this.#db(), conversationId, {
+      // Extract and store the response (skip the initial HumanMessage)
+      const response = this.#extractResponse(result.messages, 1);
+      if (response.content) {
+        await this.#conversationStore.addMessage(conversationId, {
           role: 'assistant',
-          content: responseContent,
-          toolCalls,
-          inputTokens: tokenUsage?.input_tokens,
-          outputTokens: tokenUsage?.output_tokens,
+          content: response.content,
+          toolCalls: response.toolCalls,
+          inputTokens: response.tokenUsage?.input_tokens,
+          outputTokens: response.tokenUsage?.output_tokens,
         });
       }
 
@@ -1482,18 +931,8 @@ class OrchestratorService {
   getState = async (conversationId: string): Promise<unknown> => {
     this.#ensureConfigured();
 
-    // Create a minimal graph just to get state
-    // These are guaranteed non-null by #ensureConfigured() above
-    const graph = createOrchestratorGraph(this.#llm as ChatOpenAI, '', []);
-    const compiledGraph = graph.compile({
-      checkpointer: this.#checkpointer as DatabaseCheckpointer,
-    });
-
     try {
-      const state = await compiledGraph.getState({
-        configurable: { thread_id: conversationId },
-      });
-      return state.values;
+      return await (this.#graphExecutor as GraphExecutor).getState(conversationId);
     } catch {
       return null;
     }
