@@ -12,6 +12,7 @@ import {
   debugSearchLogsTool,
   debugGetLogContextTool,
   debugLogStatsTool,
+  debugGetSystemPromptTool,
 } from './debugging.tools.ts';
 
 // ============================================================================
@@ -117,6 +118,7 @@ Use \`DebugSchedulerState\` to see what's actually scheduled in memory.
 | \`debugging_search_logs\` | Search and filter system logs |
 | \`debugging_get_log_context\` | Get logs surrounding a specific entry |
 | \`debugging_log_stats\` | Aggregate log statistics |
+| \`debugging_get_system_prompt\` | Generate and inspect the system prompt |
 
 ## Log Inspection
 
@@ -158,6 +160,31 @@ Error logs include detailed information:
 3. **Get context**: Use \`debugging_get_log_context\` with the error's log ID
 4. **Trace the conversation**: \`{ conversationId: '...' }\` to see full flow
 5. **Check related systems**: Filter by relevant source
+
+## System Prompt Inspection
+
+Use \`debugging_get_system_prompt\` to generate and inspect the system prompt that would be used for a new conversation.
+
+### What it shows
+
+- Agent identity and role from personality config
+- Communication style and behavioral traits
+- Current context (time, location, calendar, tasks)
+- Active skills domain knowledge
+- Tool usage instructions
+
+### When to use
+
+- **Debugging agent behavior**: See what instructions the agent receives
+- **Verifying personality changes**: Check if config changes take effect
+- **Context issues**: See what context data is being included
+- **Prompt engineering**: Understand the full prompt structure
+
+### Options
+
+- \`includeContext: true\` (default): Include current context (time, location, etc.)
+- \`includeContext: false\`: Only personality config, no live context
+- \`personalityId\`: Use a specific personality config (default: 'default')
 `;
 
 // ============================================================================
@@ -183,6 +210,7 @@ const debuggingSkill: SkillDefinition = {
     debugSearchLogsTool,
     debugGetLogContextTool,
     debugLogStatsTool,
+    debugGetSystemPromptTool,
   ] as ToolDefinition[],
 
   domainKnowledge: DEBUGGING_DOMAIN_KNOWLEDGE,

@@ -5,6 +5,8 @@ import { TriggerService } from '../../../features/triggers/triggers.ts';
 import { DatabaseService } from '../../../core/database/database.ts';
 import { getConversation, getMessages, listConversations } from '../../../agent/orchestrator/orchestrator.store.ts';
 import { getTelegramChatByConversation } from '../../../integrations/clients/telegram/telegram.store.ts';
+import { ContextBuilderService } from '../../../agent/context/context.ts';
+import { PersonalityService } from '../../../agent/personality/personality.ts';
 
 // Helper to convert null to undefined
 const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
@@ -993,6 +995,81 @@ Useful for getting an overview of system health.`,
 };
 
 // ============================================================================
+// debug_get_system_prompt
+// ============================================================================
+
+const debugGetSystemPromptInputSchema = z.object({
+  includeContext: z.boolean().nullish().default(true).describe('Include current context in the prompt generation'),
+  personalityId: z.string().nullish().default('default').describe('Personality config ID to use'),
+});
+
+const debugGetSystemPromptOutputSchema = z.object({
+  systemPrompt: z.string(),
+  personalityId: z.string(),
+  contextIncluded: z.boolean(),
+  promptLength: z.number(),
+});
+
+type DebugGetSystemPromptInput = z.infer<typeof debugGetSystemPromptInputSchema>;
+type DebugGetSystemPromptInputRaw = z.input<typeof debugGetSystemPromptInputSchema>;
+type DebugGetSystemPromptOutput = z.infer<typeof debugGetSystemPromptOutputSchema>;
+
+const debugGetSystemPromptTool: ToolDefinition<
+  DebugGetSystemPromptInput,
+  DebugGetSystemPromptOutput,
+  DebugGetSystemPromptInputRaw
+> = {
+  id: 'debugging_get_system_prompt',
+  name: 'DebugGetSystemPrompt',
+  description: `Generate and return the system prompt that would be used for a conversation.
+
+Uses the context builder to gather current context (time, location, calendar, etc.)
+and the personality service to assemble the full system prompt.
+
+Useful for:
+- Understanding what context the agent sees
+- Debugging prompt construction issues
+- Verifying personality configuration effects
+- Inspecting what instructions the agent receives`,
+  category: 'debugging',
+  inputSchema: debugGetSystemPromptInputSchema,
+  outputSchema: debugGetSystemPromptOutputSchema,
+  risk: {
+    level: 'low',
+    reason: 'Read-only generation of system prompt',
+    potentialImpact: 'None',
+    reversible: true,
+    categories: [],
+  },
+  tags: ['debugging', 'prompt', 'context', 'read'],
+  examples: [
+    { input: {}, description: 'Generate system prompt with current context' },
+    { input: { includeContext: false }, description: 'Generate system prompt without context' },
+    { input: { personalityId: 'custom' }, description: 'Generate using a custom personality' },
+  ],
+  execute: async (input: DebugGetSystemPromptInput, context: ToolContext): Promise<DebugGetSystemPromptOutput> => {
+    const personalityService = context.services.get(PersonalityService);
+    const personalityId = input.personalityId ?? 'default';
+
+    let agentContext = undefined;
+    if (input.includeContext) {
+      const contextBuilder = context.services.get(ContextBuilderService);
+      const { context: builtContext } = await contextBuilder.buildContext();
+      agentContext = builtContext;
+    }
+
+    const systemPrompt = await personalityService.buildSystemPrompt(agentContext, personalityId);
+
+    return {
+      systemPrompt,
+      personalityId,
+      contextIncluded: input.includeContext ?? true,
+      promptLength: systemPrompt.length,
+    };
+  },
+};
+
+// ============================================================================
 // Exports
 // ============================================================================
 
@@ -1007,4 +1084,5 @@ export {
   debugSearchLogsTool,
   debugGetLogContextTool,
   debugLogStatsTool,
+  debugGetSystemPromptTool,
 };
