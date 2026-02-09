@@ -5,8 +5,8 @@ FROM node:24-slim
 
 # Install dependencies for better-sqlite3 native compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+  python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -40,4 +40,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 VOLUME ["/data"]
 
 # Run the server
-CMD ["node", "--experimental-strip-types", "src/server/server.ts"]
+CMD ["node", "--experimental-strip-types", "src/core/server/server.ts"]
