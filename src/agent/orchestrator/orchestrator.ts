@@ -196,6 +196,27 @@ class OrchestratorService {
   };
 
   /**
+   * Gets the tool IDs from active skills.
+   * Used to filter these out of base tools to avoid duplicates.
+   */
+  #getActiveSkillToolIds = (activeSkills: ActiveSkill[]): Set<string> => {
+    if (!this.#skillRegistry) {
+      return new Set();
+    }
+
+    const skillDefinitions = this.#skillRegistry.getActiveSkillDefinitions(activeSkills);
+    const toolIds = new Set<string>();
+
+    for (const skill of skillDefinitions) {
+      for (const tool of skill.tools) {
+        toolIds.add(tool.id);
+      }
+    }
+
+    return toolIds;
+  };
+
+  /**
    * Gets LangChain tools for active skills and registers them with the tool registry.
    * This ensures skill tools are available to both the LLM and the risk gate.
    */
@@ -342,11 +363,16 @@ class OrchestratorService {
         conversationId,
         services: this.#services,
       };
+
+      // Get skill tool IDs to filter from base tools (prevents duplicates)
+      const skillToolIds = this.#getActiveSkillToolIds(activeSkills);
+      const serviceFilter = createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry);
+
       // These are guaranteed non-null by #ensureConfigured() above
       const baseTools = toLangChainToolsFiltered(
         this.#toolRegistry as ToolRegistry,
         toolContext,
-        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
+        (tool) => serviceFilter(tool) && !skillToolIds.has(tool.id),
       );
 
       // Add skill tools from active skills
@@ -669,10 +695,15 @@ class OrchestratorService {
         conversationId,
         services: this.#services,
       };
+
+      // Get skill tool IDs to filter from base tools (prevents duplicates)
+      const skillToolIds = this.#getActiveSkillToolIds(activeSkills);
+      const serviceFilter = createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry);
+
       const baseTools = toLangChainToolsFiltered(
         this.#toolRegistry as ToolRegistry,
         toolContext,
-        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
+        (tool) => serviceFilter(tool) && !skillToolIds.has(tool.id),
       );
 
       // Add skill tools from active skills
@@ -863,10 +894,15 @@ class OrchestratorService {
         conversationId,
         services: this.#services,
       };
+
+      // Get skill tool IDs to filter from base tools (prevents duplicates)
+      const skillToolIds = this.#getActiveSkillToolIds(activeSkills);
+      const serviceFilter = createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry);
+
       const baseTools = toLangChainToolsFiltered(
         this.#toolRegistry as ToolRegistry,
         toolContext,
-        createServiceFilter(this.#externalServiceRegistry as ExternalServiceRegistry),
+        (tool) => serviceFilter(tool) && !skillToolIds.has(tool.id),
       );
 
       // Add skill tools from active skills
