@@ -1236,6 +1236,86 @@ Use this to understand what capabilities are available and how they're organized
 };
 
 // ============================================================================
+// debugging_fire_trigger
+// ============================================================================
+
+const debugFireTriggerInputSchema = z.object({
+  triggerId: z.string().nullish().describe('Trigger ID to fire'),
+  triggerName: z.string().nullish().describe('Or lookup by name'),
+});
+
+const debugFireTriggerOutputSchema = z.object({
+  triggerId: z.string(),
+  triggerName: z.string(),
+  conversationId: z.string(),
+  message: z.string(),
+});
+
+type DebugFireTriggerInput = z.infer<typeof debugFireTriggerInputSchema>;
+type DebugFireTriggerInputRaw = z.input<typeof debugFireTriggerInputSchema>;
+type DebugFireTriggerOutput = z.infer<typeof debugFireTriggerOutputSchema>;
+
+const debugFireTriggerTool: ToolDefinition<DebugFireTriggerInput, DebugFireTriggerOutput, DebugFireTriggerInputRaw> = {
+  id: 'debugging_fire_trigger',
+  name: 'DebugFireTrigger',
+  description: `Manually fire a registered trigger for debugging/testing purposes.
+
+This bypasses the scheduler and fires the trigger immediately. The trigger
+will be invoked even if it's paused or hasn't reached its scheduled time.
+
+Use this to:
+- Test a trigger without waiting for its schedule
+- Debug trigger behavior
+- Manually retry a failed trigger
+
+The trigger's invocation count will be incremented and a new conversation
+will be created, just like a normal scheduled firing.`,
+  category: 'debugging',
+  inputSchema: debugFireTriggerInputSchema,
+  outputSchema: debugFireTriggerOutputSchema,
+  risk: {
+    level: 'medium',
+    reason: 'Executes trigger which may send notifications or make external calls',
+    potentialImpact: 'May send notifications or invoke external services',
+    reversible: false,
+    categories: ['external_communication'],
+  },
+  tags: ['debugging', 'triggers', 'execute'],
+  examples: [
+    { input: { triggerName: 'daily-briefing' }, description: 'Fire the daily briefing trigger' },
+    { input: { triggerId: 'abc123' }, description: 'Fire trigger by ID' },
+  ],
+  execute: async (input: DebugFireTriggerInput, context: ToolContext): Promise<DebugFireTriggerOutput> => {
+    const triggerService = context.services.get(TriggerService);
+
+    if (!input.triggerId && !input.triggerName) {
+      throw new Error('Either triggerId or triggerName must be provided');
+    }
+
+    // Look up the trigger
+    const trigger = input.triggerId
+      ? await triggerService.get(input.triggerId)
+      : input.triggerName
+        ? await triggerService.getByName(input.triggerName)
+        : null;
+
+    if (!trigger) {
+      throw new Error(`Trigger not found: ${input.triggerId ?? input.triggerName}`);
+    }
+
+    // Fire the trigger
+    const result = await triggerService.fireManually(trigger.id);
+
+    return {
+      triggerId: trigger.id,
+      triggerName: trigger.name,
+      conversationId: result.conversationId,
+      message: `Trigger "${trigger.name}" fired successfully. Conversation ID: ${result.conversationId}`,
+    };
+  },
+};
+
+// ============================================================================
 // Exports
 // ============================================================================
 
@@ -1252,4 +1332,5 @@ export {
   debugLogStatsTool,
   debugGetSystemPromptTool,
   debugListAvailableToolsTool,
+  debugFireTriggerTool,
 };

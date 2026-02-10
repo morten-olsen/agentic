@@ -423,6 +423,43 @@ class TriggerService {
   };
 
   // ==========================================================================
+  // Manual Trigger Execution
+  // ==========================================================================
+
+  /**
+   * Manually fires a trigger for debugging/testing purposes.
+   * This bypasses the scheduler and fires the trigger immediately.
+   *
+   * @param triggerId - The ID of the trigger to fire
+   * @returns The conversation ID created by the invocation
+   * @throws TriggerNotFoundError if the trigger doesn't exist
+   * @throws TriggerServiceNotConfiguredError if the service is not configured
+   */
+  fireManually = async (triggerId: string): Promise<{ conversationId: string }> => {
+    if (!this.#orchestrator) {
+      throw new TriggerServiceNotConfiguredError();
+    }
+
+    const trigger = await getTrigger(this.#db(), triggerId);
+    if (!trigger) {
+      throw new TriggerNotFoundError(triggerId);
+    }
+
+    // Fire the trigger (this updates invocation count, creates conversation, etc.)
+    // Note: We call the internal #fire method but need to track the conversation ID
+    // Since #fire doesn't return it, we'll need to get it from the most recent invocation
+    await this.#fire(triggerId);
+
+    // Get the conversation that was created
+    const conversations = await getTriggerConversations(this.#db(), triggerId, { limit: 1 });
+    if (conversations.length === 0) {
+      throw new Error('Trigger fired but no conversation was created');
+    }
+
+    return { conversationId: conversations[0].conversationId };
+  };
+
+  // ==========================================================================
   // Internal Methods
   // ==========================================================================
 

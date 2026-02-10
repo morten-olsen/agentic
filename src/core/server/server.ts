@@ -272,6 +272,9 @@ const registerTelegramNotificationChannel = async (
       // Send via Telegram
       await telegram.sendMessage(ownerId, message);
 
+      // Inject into active conversation so the agent has context for follow-up questions
+      await telegram.injectNotificationToActiveConversation(notification);
+
       return { externalId: `telegram-${notification.id}` };
     },
   });

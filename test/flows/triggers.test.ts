@@ -413,4 +413,39 @@ describe('TriggerService Integration', () => {
 
     expect(invokeBackgroundCalled).toBe(true);
   });
+
+  it('fireManually fires a trigger immediately and returns conversation ID', async () => {
+    server.use(
+      http.post('*/chat/completions', () => {
+        return HttpResponse.json(createChatCompletion('Manual trigger executed successfully.'));
+      }),
+    );
+
+    // Create a trigger scheduled for the future
+    const futureTime = new Date(Date.now() + 3600000); // 1 hour from now
+    const trigger = await triggerService.create({
+      name: 'manual-test-trigger',
+      goal: 'Test manual firing',
+      schedule: { type: 'once', at: futureTime.toISOString() },
+    });
+
+    // Fire the trigger manually (before its scheduled time)
+    const result = await triggerService.fireManually(trigger.id);
+
+    // Should return a conversation ID
+    expect(result.conversationId).toBeDefined();
+    expect(typeof result.conversationId).toBe('string');
+
+    // Verify the trigger's invocation count was incremented
+    const updatedTrigger = await triggerService.get(trigger.id);
+    expect(updatedTrigger?.invocationCount).toBe(1);
+
+    // Verify a conversation was created and linked to the trigger
+    const conversations = await triggerService.getConversations(trigger.id);
+    expect(conversations).toContain(result.conversationId);
+  });
+
+  it('fireManually throws for non-existent trigger', async () => {
+    await expect(triggerService.fireManually('non-existent-id')).rejects.toThrow('not found');
+  });
 });

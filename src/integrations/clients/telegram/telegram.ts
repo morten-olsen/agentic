@@ -5,16 +5,23 @@ import type { Knex } from 'knex';
 import type { Services } from '../../../core/services/services.ts';
 import { DatabaseService } from '../../../core/database/database.ts';
 import { OrchestratorService } from '../../../agent/orchestrator/orchestrator.ts';
-import { getConversation, getMessages } from '../../../agent/orchestrator/orchestrator.store.ts';
+import { getConversation, getMessages, addMessage } from '../../../agent/orchestrator/orchestrator.store.ts';
 import { PersonalityService } from '../../../agent/personality/personality.ts';
 import { TriggerService } from '../../../features/triggers/triggers.ts';
 import { CalendarSyncService } from '../../../domain/calendar/calendar-sync.ts';
 import type { Config } from '../../../core/config/config.ts';
 import { isHomeAssistantConfigured } from '../../../core/config/config.ts';
+import type { Notification } from '../../../features/notifications/notifications.schemas.ts';
 
 import type { TelegramConfig } from './telegram.schemas.ts';
 import { telegramConfigSchema } from './telegram.schemas.ts';
-import { createTelegramChat, getTelegramChat, updateLastActivity, deleteTelegramChat } from './telegram.store.ts';
+import {
+  createTelegramChat,
+  getTelegramChat,
+  updateLastActivity,
+  deleteTelegramChat,
+  listTelegramChatsByUser,
+} from './telegram.store.ts';
 import {
   sendLongMessage,
   formatInterruptMessage,
@@ -528,6 +535,40 @@ class TelegramClientService {
     }
 
     await this.#bot.api.sendMessage(chatId, message);
+  };
+
+  /**
+   * Injects a notification into the user's active conversation.
+   * This allows the agent to have context about background notifications
+   * when the user asks follow-up questions.
+   */
+  injectNotificationToActiveConversation = async (notification: Notification): Promise<void> => {
+    if (!this.#config?.ownerId) {
+      return;
+    }
+
+    // Find the user's most recent conversation
+    const chats = await listTelegramChatsByUser(this.#db(), this.#config.ownerId);
+    if (chats.length === 0) {
+      // No active conversation - skip injection
+      return;
+    }
+
+    const activeChat = chats[0]; // Most recent by last_activity_at
+
+    // Format the notification as an assistant message
+    const content = `[Background notification sent]\n**${notification.title}**\n${notification.body}`;
+
+    await addMessage(this.#db(), activeChat.conversationId, {
+      role: 'assistant',
+      content,
+      metadata: {
+        notificationId: notification.id,
+        notificationType: notification.type,
+        notificationUrgency: notification.urgency,
+        injectedNotification: true,
+      },
+    });
   };
 }
 

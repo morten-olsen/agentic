@@ -14,6 +14,7 @@ import {
   debugLogStatsTool,
   debugGetSystemPromptTool,
   debugListAvailableToolsTool,
+  debugFireTriggerTool,
 } from './debugging.tools.ts';
 
 // ============================================================================
@@ -113,6 +114,7 @@ Use \`DebugSchedulerState\` to see what's actually scheduled in memory.
 | \`debugging_get_trigger\` | Deep dive into single trigger with conversation history |
 | \`debugging_trigger_history\` | When triggers fired, which conversations created |
 | \`debugging_scheduler_state\` | Live in-memory scheduler queue |
+| \`debugging_fire_trigger\` | Manually fire a trigger for testing |
 | \`debugging_get_conversation\` | Full conversation with messages and tool calls |
 | \`debugging_list_conversations\` | Find conversations (filter by trigger) |
 | \`debugging_system_health\` | Service status and statistics |
@@ -121,6 +123,33 @@ Use \`DebugSchedulerState\` to see what's actually scheduled in memory.
 | \`debugging_log_stats\` | Aggregate log statistics |
 | \`debugging_get_system_prompt\` | Generate and inspect the system prompt |
 | \`debugging_list_available_tools\` | List all registered tools and skills |
+
+## Manual Trigger Execution
+
+Use \`debugging_fire_trigger\` to manually fire a trigger without waiting for its schedule.
+
+### When to use
+
+- **Testing**: Verify a trigger works correctly before waiting for its schedule
+- **Debugging**: Reproduce an issue by manually firing a problematic trigger
+- **Recovery**: Manually retry a failed trigger after fixing the underlying issue
+
+### How it works
+
+The tool fires the trigger immediately:
+- Bypasses the scheduler timing
+- Creates a new conversation
+- Increments the invocation count
+- Records the conversation in trigger history
+- Does NOT reschedule the next automatic invocation
+
+### Example
+
+\`\`\`
+debugging_fire_trigger({ triggerName: 'daily-briefing' })
+\`\`\`
+
+Returns the conversation ID so you can inspect what happened with \`debugging_get_conversation\`.
 
 ## Log Inspection
 
@@ -230,6 +259,7 @@ const debuggingSkill: SkillDefinition = {
     debugGetTriggerTool,
     debugTriggerHistoryTool,
     debugSchedulerStateTool,
+    debugFireTriggerTool,
     debugGetConversationTool,
     debugListConversationsTool,
     debugSystemHealthTool,
