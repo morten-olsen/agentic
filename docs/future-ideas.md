@@ -723,7 +723,178 @@ A true personal assistant remembers. Not just facts (that's Memory), but the flo
 
 ---
 
-## 8. Health & Wellness Tracking
+## 8. Project Workspaces
+
+**Status:** Proposed
+**Effort:** High
+**Impact:** Very High
+**Leverage:** Transforms project collaboration from "remembers project exists" to "active partner with full context"
+
+### Description
+
+Extend project tracking from simple metadata (name, description, tasks) to rich **Project Workspaces** that can be activated like skills. When working on a project, the agent gains deep context—relevant files, decisions, history, blockers—without bloating the base context when working on other things.
+
+**Problem:** Current project tracking is shallow. The agent knows "Project X exists" but doesn't have the context to truly collaborate: which files matter, what decisions were made, where we left off, what's blocked. Loading all this for every project would overwhelm the context window.
+
+**Solution:** Project Workspaces that activate on-demand, similar to Skills. When you say "let's work on the API refactor", the agent loads that project's full context and becomes a true collaborator.
+
+### Project Workspace Model
+
+```typescript
+type ProjectWorkspace = {
+  id: string;
+  projectId: string;                    // Links to existing Project in user-model
+
+  // Core context (loaded on activation)
+  context: {
+    overview: string;                   // Current state summary (auto-updated)
+    keyFiles: Array<{
+      path: string;
+      purpose: string;                  // "Main entry point", "API routes", etc.
+      lastModified: Date;
+    }>;
+    techStack: string[];                // "TypeScript", "React", "PostgreSQL"
+    conventions: string;                // Project-specific patterns
+  };
+
+  // Decision log
+  decisions: Array<{
+    date: Date;
+    decision: string;
+    rationale: string;
+    alternatives: string[];             // What we considered
+    conversationRef?: string;           // Link to conversation where decided
+  }>;
+
+  // Working memory
+  workingState: {
+    currentFocus: string;               // "Implementing auth middleware"
+    openQuestions: string[];            // Unresolved questions
+    blockers: string[];                 // Known blockers
+    nextSteps: string[];                // What we planned to do next
+    lastWorkedOn: Date;
+  };
+
+  // File tracking
+  watchedFiles: Array<{
+    path: string;
+    purpose: string;
+    contentHash?: string;               // Detect external changes
+  }>;
+
+  // Related memories (IDs to fetch on activation)
+  relatedMemoryIds: string[];
+
+  // Activation metadata
+  activationRisk: 'none';               // Projects are always safe to load
+  lastActivated: Date;
+  totalActivations: number;
+};
+```
+
+### User Experience
+
+**Activation:**
+```
+User: Let's work on the billing system
+Agent: [Activates billing-system workspace]
+Agent: "Loading billing system context. Last session (3 days ago) we were
+        implementing the Stripe webhook handler. You had a question about
+        handling duplicate events. The webhook endpoint is at
+        src/billing/webhooks.ts. Ready to continue?"
+```
+
+**During Work:**
+- Agent knows which files matter and why
+- Can reference past decisions ("We chose Stripe over Paddle because...")
+- Tracks new decisions automatically
+- Updates working state as you progress
+- Knows the tech stack and conventions
+
+**Deactivation:**
+```
+User: I need to switch to the mobile app
+Agent: [Captures current state: "Implemented webhook handler, need to add
+        idempotency check"]
+Agent: [Deactivates billing-system, activates mobile-app workspace]
+Agent: "Switching to mobile app. You were working on the push notification
+        permissions flow..."
+```
+
+### Core Capabilities
+
+**1. Context Loading**
+On activation, inject into agent context:
+- Project overview and current state
+- Key files with purposes
+- Tech stack and conventions
+- Recent decisions
+- Open questions and blockers
+- Where we left off
+
+**2. Automatic State Capture**
+Before deactivation or periodically:
+- Summarize what was accomplished
+- Extract decisions made
+- Update open questions
+- Capture next steps
+- Update file purposes if changed
+
+**3. File Intelligence**
+- Track which files are relevant to the project
+- Detect when tracked files change externally
+- Auto-suggest adding frequently-accessed files
+- Understand file relationships within project
+
+**4. Decision Memory**
+- Prompt to record significant decisions
+- Capture rationale and alternatives considered
+- Link decisions to conversations
+- Surface relevant past decisions when similar topics arise
+
+**5. Cross-Session Continuity**
+- "Where did we leave off?" → instant context
+- "What decisions have we made about X?" → decision log
+- "Why did we choose Y?" → rationale with conversation link
+
+### Relationship to Existing Systems
+
+| System | Relationship |
+|--------|-------------|
+| **User Model Projects** | Workspace extends Project with rich context |
+| **Skills** | Similar activation model, but for project context not capabilities |
+| **Memory** | Workspaces link to and surface relevant memories |
+| **Tasks** | Project tasks visible in workspace, workspace context aids task work |
+| **Conversation Continuity (#7)** | Workspaces + continuity = seamless multi-session projects |
+
+### Implementation Approach
+
+1. **Schema & Storage**: Create `project_workspaces` table with JSON columns for flexible context
+2. **Activation Tools**: `activate_project_workspace`, `deactivate_project_workspace`, `list_project_workspaces`
+3. **Context Builder Integration**: Inject active workspace into system prompt
+4. **State Capture**: Background process to summarize and update working state
+5. **File Tracking**: Tools to add/remove watched files, detect changes
+6. **Decision Logging**: Tool to record decisions, auto-prompt on significant choices
+7. **Workspace Management UI**: Commands to view/edit workspace content
+
+### Why It Matters
+
+This is the difference between:
+- **Tool**: "What project should I work on?" / "I see you have a billing-system project"
+- **Partner**: "Let's continue on billing. Last time we implemented the webhook handler but left the idempotency check. Here's the file we were working on and the Stripe API pattern we discussed."
+
+Projects are where real work happens. A personal assistant that can deeply engage with projects—knowing the context, history, decisions, and current state—becomes a genuine collaborator rather than a sophisticated search engine.
+
+### Challenges
+
+- **Staleness**: Project context can become outdated; need refresh mechanisms
+- **File Changes**: Watched files may change outside GLaDOS; need sync strategy
+- **Context Size**: Even with activation, large projects need smart summarization
+- **Multiple Projects**: User may work across projects in one conversation
+
+---
+
+## 9. Health & Wellness Tracking
 
 **Status:** Proposed
 **Effort:** Medium
@@ -754,10 +925,11 @@ Holistic wellness awareness:
 | Conversation Continuity | High | Very High | 2 - Foundation for continuous relationship |
 | Anticipatory Intelligence | Medium | High | 3 - Differentiator |
 | Research & Execution Skills | Medium | High | 4 - Parallel track |
-| Tool Builder Skill | High | Very High | 5 - Self-extending agent |
-| Memory Evolution | High | Very High | 6 - Long-term investment |
-| Health & Wellness | Medium | Medium | 7 - Nice to have |
-| Financial Awareness | High | Medium | 8 - Complex, sensitive |
+| Project Workspaces | High | Very High | 5 - Deep project collaboration |
+| Tool Builder Skill | High | Very High | 6 - Self-extending agent |
+| Memory Evolution | High | Very High | 7 - Long-term investment |
+| Health & Wellness | Medium | Medium | 8 - Nice to have |
+| Financial Awareness | High | Medium | 9 - Complex, sensitive |
 
 **Note:** Daily Briefings don't need a dedicated feature - they're just triggers with goals like "Summarize my calendar, tasks, and weather for today." The existing trigger system + tools (`getAgenda`, `listUserTasks`, `weather.get`, `notify`) already provide this capability with full user control over content.
 
