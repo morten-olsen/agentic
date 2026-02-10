@@ -37,6 +37,7 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 | `docs/external-services.md` | Integrating external services (Home Assistant, Oura) |
 | `docs/skills.md` | Skills system usage and development |
 | `docs/artifacts.md` | Server-side storage for large tool responses |
+| `docs/memory-consolidation.md` | Memory consolidation system and background jobs |
 | `docs/specs.md` | How to work with specifications |
 | `spec/001-agent.md` | Main technical specification |
 
@@ -108,7 +109,7 @@ glados/
     ├── agent/             # AI orchestration layer
     │   ├── context/       # Context Builder
     │   ├── embeddings/    # Embedding generation
-    │   ├── memory/        # Storage, recall, entity knowledge
+    │   ├── memory/        # Storage, recall, entity knowledge, consolidation
     │   ├── orchestrator/  # LangGraph orchestration
     │   ├── personality/   # Agent personality config
     │   ├── skills/        # Domain-specific capabilities
@@ -148,7 +149,7 @@ See `docs/debugging.md` for detailed workflows.
 
 ## Current Status
 
-**Version**: 1.0 - Initial Implementation Complete (Phases 1-8) - 1039+ passing tests
+**Version**: 1.1 - Memory Consolidation Complete - 1342+ passing tests
 
 All initial phases are complete:
 
@@ -161,6 +162,7 @@ All initial phases are complete:
 7. Tool Discovery - Tool Sets, Discovery Agent
 8. Skills System - Gated domain-specific capabilities, approval flow
 9. Health Tracking - Oura Ring integration, webhook-based data ingestion
+10. Memory Consolidation - Activation decay, consolidated knowledge, open loops, background jobs
 
 Future phases are documented in `spec/future-phases.md`.
 

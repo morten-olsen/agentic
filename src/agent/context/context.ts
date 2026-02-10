@@ -1,6 +1,7 @@
 import type { Services } from '../../core/services/services.ts';
 import type { PendingTaskContext } from '../../features/tasks/tasks.schemas.ts';
 import type { DayPlanContext } from '../../features/day-planner/day-planner.schemas.ts';
+import type { MemoryIndex } from '../../agent/memory/consolidation/consolidation.ts';
 import { UserModelService } from '../../domain/user-model/user-model.ts';
 import { LocationService } from '../../domain/location/location.ts';
 import { CalendarService } from '../../domain/calendar/calendar.ts';
@@ -12,6 +13,7 @@ import { DatabaseService } from '../../core/database/database.ts';
 import { getConfig } from '../../core/config/config.ts';
 import type { HomeAssistantClient, HaPersonState } from '../../integrations/external/homeassistant/index.ts';
 import { recordCoordinate } from '../../domain/location/location.store.ts';
+import { MemoryIndexService } from '../../agent/memory/consolidation/consolidation.ts';
 
 import type {
   AgentContext,
@@ -106,6 +108,7 @@ class ContextBuilderService {
       pendingTasks,
       dayPlanContext,
       recentActivity,
+      memoryContext,
       timeOfDay,
       localTime,
     ] = await Promise.all([
@@ -115,6 +118,7 @@ class ContextBuilderService {
       this.#getPendingTasks(),
       this.#getDayPlanContext(),
       this.#getRecentActivity(),
+      this.#getMemoryContext(),
       userModel.getTimeOfDay(now),
       userModel.formatLocalTime(now),
     ]);
@@ -141,6 +145,9 @@ class ContextBuilderService {
 
       // Recent activity from event log
       recentActivity,
+
+      // Memory context
+      memory: memoryContext,
 
       // No active conversation by default
       conversation: undefined,
@@ -521,6 +528,19 @@ class ContextBuilderService {
     } catch {
       // Day plan service may not be available yet, return null
       return null;
+    }
+  };
+
+  /**
+   * Gets the memory context (active entities, open loops, landscape).
+   */
+  #getMemoryContext = async (): Promise<MemoryIndex | undefined> => {
+    try {
+      const memoryIndexService = this.#services.get(MemoryIndexService);
+      return await memoryIndexService.getMemoryIndex();
+    } catch {
+      // Memory index service may not be available yet, return undefined
+      return undefined;
     }
   };
 

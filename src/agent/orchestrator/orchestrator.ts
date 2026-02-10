@@ -21,6 +21,12 @@ import { ExternalServiceRegistry } from '../../integrations/external/external.ts
 import { generateDeltaInstructions } from '../../agent/personality/personality.prompts.ts';
 import { registerExternalServices, registerExternalServiceTools } from '../../integrations/external/external.tools.ts';
 import { DomainWhitelistService } from '../../features/risk-policies/risk-policies.ts';
+import {
+  OpenLoopService,
+  MemoryIndexService,
+  MessageRetrievalService,
+} from '../../agent/memory/consolidation/consolidation.ts';
+import type { MemoryHint } from '../../agent/memory/consolidation/consolidation.ts';
 
 import { collectTools } from './orchestrator.tool-collector.ts';
 import type { ResumeStrategy } from './orchestrator.resume.ts';
@@ -58,6 +64,7 @@ class OrchestratorService {
   #skillRegistry: SkillRegistry | null = null;
   #externalServiceRegistry: ExternalServiceRegistry | null = null;
   #logService: LogService | null = null;
+  #messageRetrievalService: MessageRetrievalService | null = null;
 
   constructor(services: Services) {
     this.#services = services;
@@ -135,6 +142,15 @@ class OrchestratorService {
       dimensions: 384,
     };
     await this.#memoryService.configure(embeddingConfig);
+
+    // Initialize memory consolidation services for per-message retrieval
+    const openLoopService = new OpenLoopService(this.#services);
+    this.#services.set(OpenLoopService, openLoopService);
+
+    const memoryIndexService = new MemoryIndexService(this.#services);
+    this.#services.set(MemoryIndexService, memoryIndexService);
+
+    this.#messageRetrievalService = new MessageRetrievalService(this.#services);
 
     // Initialize graph executor
     this.#graphExecutor = new GraphExecutor({
@@ -229,6 +245,32 @@ class OrchestratorService {
     }
 
     return messages;
+  };
+
+  /**
+   * Injects memory hints into the last user message.
+   * Modifies the messages array in place.
+   */
+  #injectMemoryHints = (messages: BaseMessage[], hints: MemoryHint[]): void => {
+    if (hints.length === 0 || messages.length === 0) {
+      return;
+    }
+
+    // Find the last HumanMessage
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg instanceof HumanMessage) {
+        const hintText = hints.map((h) => `- ${h.hint}`).join('\n');
+        const originalContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        msg.content = `${originalContent}
+
+<memory-context>
+Relevant memories detected:
+${hintText}
+</memory-context>`;
+        return;
+      }
+    }
   };
 
   /**
@@ -473,6 +515,14 @@ class OrchestratorService {
       // Load existing messages from history for this conversation
       const history = await this.#conversationStore.getMessages(conversationId);
       const historyMessages: BaseMessage[] = this.#convertHistoryToMessages(history);
+
+      // Per-message retrieval: inject memory hints into the last user message
+      if (this.#messageRetrievalService) {
+        const retrievalResult = await this.#messageRetrievalService.retrieveForMessage(message);
+        if (retrievalResult.hints.length > 0) {
+          this.#injectMemoryHints(historyMessages, retrievalResult.hints);
+        }
+      }
 
       // Execute the graph
       const executionResult = await (this.#graphExecutor as GraphExecutor).execute(

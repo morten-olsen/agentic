@@ -201,6 +201,48 @@ for (const i of interrupts) {
 }
 ```
 
+### Inspecting Memory Consolidation
+
+To inspect consolidated memories and open loops:
+
+```javascript
+// List consolidated memories
+const consolidated = await knex('consolidated_memories')
+  .orderBy('activation_score', 'desc')
+  .limit(10);
+
+for (const cm of consolidated) {
+  console.log('ID:', cm.id);
+  console.log('Type:', cm.type);
+  console.log('Summary:', JSON.parse(cm.content).summary);
+  console.log('Activation:', cm.activation_score);
+  console.log('Source count:', cm.source_memory_count);
+}
+
+// List active open loops
+const loops = await knex('open_loops')
+  .where({ status: 'active' })
+  .orderBy('created_at', 'desc');
+
+for (const loop of loops) {
+  console.log('ID:', loop.id);
+  console.log('Topic:', loop.topic);
+  console.log('Patterns:', JSON.parse(loop.activation_patterns));
+  console.log('Created:', loop.created_at);
+}
+
+// Check memory activation scores
+const activations = await knex('memory_activation')
+  .orderBy('activation_score', 'desc')
+  .limit(20);
+
+for (const a of activations) {
+  console.log('Memory:', a.memory_id);
+  console.log('Score:', a.activation_score);
+  console.log('Last decay:', a.last_decay_at);
+}
+```
+
 ### Database Tables Reference
 
 | Table | Purpose |
@@ -210,6 +252,11 @@ for (const i of interrupts) {
 | `checkpoints` | LangGraph state snapshots |
 | `interrupts` | Human-in-the-loop approval requests |
 | `telegram_chats` | Telegram chat → conversation mapping |
+| `memories` | Individual memory records |
+| `consolidated_memories` | Distilled knowledge from multiple memories |
+| `open_loops` | Unresolved situations to track |
+| `memory_activation` | Activation scores for memories |
+| `consolidation_runs` | Consolidation job run history |
 
 ## Working with AI Agents
 

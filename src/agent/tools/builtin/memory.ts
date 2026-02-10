@@ -7,6 +7,7 @@ import {
   memoryEntrySchema,
   recallOptionsSchema,
 } from '../../../agent/memory/memory.ts';
+import { MemoryIndexService, memoryIndexSchema } from '../../../agent/memory/consolidation/consolidation.ts';
 
 // ============================================================================
 // Utilities
@@ -396,6 +397,41 @@ const getRecentTopicsTool: ToolDefinition<GetRecentTopicsInput, GetRecentTopicsO
 };
 
 // ============================================================================
+// Get Memory Index
+// ============================================================================
+
+const getMemoryIndexInputSchema = z.object({});
+
+const getMemoryIndexOutputSchema = memoryIndexSchema;
+
+type GetMemoryIndexInput = z.infer<typeof getMemoryIndexInputSchema>;
+type GetMemoryIndexOutput = z.infer<typeof getMemoryIndexOutputSchema>;
+
+const getMemoryIndexTool: ToolDefinition<GetMemoryIndexInput, GetMemoryIndexOutput> = {
+  id: 'memory.getIndex',
+  name: 'GetMemoryIndex',
+  description: `Get an overview of available memories and knowledge.
+    Returns active entities, open loops, and memory landscape.
+    Use this to understand what context is available before searching.`,
+  category: 'memory',
+  inputSchema: getMemoryIndexInputSchema,
+  outputSchema: getMemoryIndexOutputSchema,
+  risk: {
+    level: 'low',
+    reason: 'Read-only operation',
+    potentialImpact: 'None',
+    reversible: true,
+    categories: [],
+  },
+  tags: ['memory', 'index', 'read'],
+  examples: [{ input: {}, description: 'Get the current memory index' }],
+  execute: async (_input: GetMemoryIndexInput, context: ToolContext): Promise<GetMemoryIndexOutput> => {
+    const indexService = context.services.get(MemoryIndexService);
+    return indexService.getMemoryIndex();
+  },
+};
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -409,6 +445,7 @@ const registerMemoryTools = (registry: ToolRegistry): void => {
   registry.register(correctTool);
   registry.register(forgetTool);
   registry.register(getRecentTopicsTool);
+  registry.register(getMemoryIndexTool);
 };
 
 export {
@@ -421,5 +458,6 @@ export {
   correctTool,
   forgetTool,
   getRecentTopicsTool,
+  getMemoryIndexTool,
   registerMemoryTools,
 };

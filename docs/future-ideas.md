@@ -438,14 +438,15 @@ const skill = {
 
 ## 5. Memory Evolution
 
-**Status:** Proposed
+**Status:** Partially Specified
 **Effort:** High
 **Impact:** Very High
 **Leverage:** Transforms assistant from "remembers" to "understands"
+**Spec:** `spec/019-memory-consolidation.md` covers consolidation and scalable recall
 
 ### Description
 
-Evolve the memory system from storage/retrieval to genuine learning:
+Evolve the memory system from storage/retrieval to genuine learning. Core consolidation and scalable recall is covered in `spec/019-memory-consolidation.md`. This section covers remaining enhancements.
 
 ### Entity Linking
 
@@ -453,6 +454,11 @@ Recognize that different references point to the same entity:
 - "Alice", "Alice Smith", "my sister" → same person
 - "the project", "Johnson proposal", "that thing for work" → same project
 - Build entity graphs with relationships
+
+**Implementation considerations:**
+- Requires NLP for coreference resolution
+- User confirmation flow for ambiguous matches
+- Could start simple: explicit "X is also known as Y" tool
 
 ### Pattern Detection
 
@@ -462,21 +468,36 @@ Identify recurring patterns in user behavior:
 - "User is most productive in morning hours"
 - "User forgets to follow up with Bob"
 
-### Memory Consolidation
+### Preference Evolution Tracking
 
-Periodically process memories:
-- Summarize old detailed memories into higher-level insights
-- Decay unimportant details over time
-- Merge related memories into coherent narratives
-- Identify contradictions or updates
-
-### Temporal Awareness
-
-Weight memories by recency and relevance:
-- Recent memories more prominent
-- Old memories summarized but accessible
-- Track how things change over time
+Track how preferences change over time:
 - "You used to prefer X but lately you've been choosing Y"
+- Maintain history of preference changes with timestamps
+- Surface evolution when relevant to decisions
+
+### Learned Importance
+
+Use user feedback to adjust memory importance:
+- If user frequently asks about something, boost its activation
+- If user corrects or dismisses a memory, reduce importance
+- Track which memories lead to useful responses
+- Implicit feedback from conversation patterns
+
+### Memory Graphs
+
+Build relationship graphs between entities based on co-occurrence:
+- "Alice" frequently mentioned with "Project X" → linked
+- Enable "related to" queries: "What do I know related to Alice?"
+- Visualize knowledge as connected graph
+- Could inform anticipatory intelligence
+
+### Proactive Surfacing
+
+Beyond reactive retrieval, periodically analyze context:
+- "You haven't mentioned Bob in 3 months but used to talk weekly"
+- "This topic relates to a decision you made last year"
+- Surface relevant memories without explicit query
+- Integrate with Anticipatory Intelligence (#2)
 
 ### Why It Matters
 
@@ -486,11 +507,12 @@ This is the difference between:
 
 ### Implementation Approach
 
-1. Add entity extraction to memory storage
-2. Build entity resolution system (NLP + user confirmation)
-3. Create consolidation trigger (weekly?)
-4. Implement pattern detection algorithms
-5. Add temporal decay to retrieval scoring
+1. Build entity resolution system (NLP + user confirmation)
+2. Add entity extraction to memory storage
+3. Implement pattern detection algorithms
+4. Add learned importance from feedback
+5. Build memory relationship graphs
+6. Add preference evolution tracking
 
 ---
 

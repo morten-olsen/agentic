@@ -146,6 +146,8 @@ Ideas for future enhancement (out of scope for current version).
 | 015-health-tracking.md | Draft | Health/wellness tracking with Oura integration |
 | 016-src-restructure.md | Implemented | Reorganize src/ into logical groupings |
 | 017-orchestrator-rewrite.md | Draft | Simplify and stabilize the orchestration layer |
+| 018-api-server.md | Draft | HTTP API server for external access |
+| 019-memory-consolidation.md | Draft | Scalable memory with consolidation and layered retrieval |
 
 ## Tips for AI Agents
 

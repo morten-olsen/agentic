@@ -17,6 +17,8 @@ import { registerArtifactTools } from './artifacts.ts';
 import { registerEventTools } from './events.ts';
 import { weatherTool } from './weather.ts';
 import { registerDomainWhitelistTools } from './domain-whitelist.ts';
+import { registerOpenLoopTools } from './openloop.ts';
+import { registerConsolidatedMemoryTools } from './consolidated-memory.ts';
 
 /**
  * Registers all builtin tools with the registry.
@@ -42,6 +44,8 @@ const registerBuiltinTools = (registry: ToolRegistry): void => {
   registerArtifactTools(registry);
   registerEventTools(registry);
   registerDomainWhitelistTools(registry);
+  registerOpenLoopTools(registry);
+  registerConsolidatedMemoryTools(registry);
 };
 
 // Re-export individual tools for direct access
@@ -94,5 +98,9 @@ export type {
   ListWhitelistedDomainsInput,
   ListWhitelistedDomainsOutput,
 } from './domain-whitelist.ts';
+
+export { registerOpenLoopTools } from './openloop.ts';
+
+export { registerConsolidatedMemoryTools } from './consolidated-memory.ts';
 
 export { registerBuiltinTools };

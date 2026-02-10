@@ -6,6 +6,7 @@ import { calendarEventSchema } from '../../domain/calendar/calendar.schemas.ts';
 import { pendingTaskContextSchema } from '../../features/tasks/tasks.schemas.ts';
 import { dayPlanContextSchema } from '../../features/day-planner/day-planner.schemas.ts';
 import { eventSchema } from '../../features/events/events.schemas.ts';
+import { memoryIndexSchema } from '../../agent/memory/consolidation/consolidation.ts';
 
 // ============================================================================
 // Time of Day
@@ -111,6 +112,9 @@ const agentContextSchema = z.object({
 
   // Recent activity from event log
   recentActivity: recentActivityContextSchema.optional(),
+
+  // Memory context (active entities, open loops, landscape)
+  memory: memoryIndexSchema.optional(),
 
   // Active conversation (if any)
   conversation: z
