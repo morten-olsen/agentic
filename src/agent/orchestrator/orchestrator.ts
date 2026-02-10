@@ -947,6 +947,44 @@ class OrchestratorService {
       return null;
     }
   };
+
+  /**
+   * Injects an assistant message into a conversation.
+   * This is used for injecting notifications or other background messages
+   * so they appear in both the database history and the LangGraph state.
+   *
+   * @param conversationId - The conversation ID
+   * @param content - The message content
+   * @param metadata - Optional metadata to attach to the message
+   * @returns true if the message was injected into both DB and checkpoint
+   */
+  injectAssistantMessage = async (
+    conversationId: string,
+    content: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<boolean> => {
+    // Add to database for history
+    await this.#conversationStore.addMessage(conversationId, {
+      role: 'assistant',
+      content,
+      metadata,
+    });
+
+    // Also inject into checkpoint if one exists
+    // This ensures the message is part of the LangGraph state
+    if (this.#checkpointer) {
+      const messageId = `injected-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const langChainMessage = {
+        id: messageId,
+        type: 'ai',
+        content,
+        additional_kwargs: metadata ? { metadata } : {},
+      };
+      return await this.#checkpointer.injectMessage(conversationId, langChainMessage);
+    }
+
+    return false;
+  };
 }
 
 // Re-export types and schemas

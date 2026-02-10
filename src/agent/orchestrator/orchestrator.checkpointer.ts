@@ -260,6 +260,48 @@ class DatabaseCheckpointer extends BaseCheckpointSaver {
 
     return rows.map((r) => r.checkpoint_id);
   };
+
+  /**
+   * Injects a message into the checkpoint state for a thread.
+   * This is used to add notifications or other messages directly to the LangGraph state
+   * without going through a full graph execution.
+   *
+   * @param threadId - The conversation/thread ID
+   * @param message - The message object to inject (must be serializable)
+   * @returns true if the message was injected, false if no checkpoint exists
+   */
+  injectMessage = async (threadId: string, message: Record<string, unknown>): Promise<boolean> => {
+    // Get the latest checkpoint for this thread
+    const row = await this.#db<CheckpointRow>('checkpoints')
+      .where({ conversation_id: threadId })
+      .orderBy('created_at', 'desc')
+      .first();
+
+    if (!row) {
+      // No checkpoint exists yet - cannot inject
+      return false;
+    }
+
+    // Parse the checkpoint state
+    const checkpoint = JSON.parse(row.state) as Checkpoint;
+    const channelValues = checkpoint.channel_values as Record<string, unknown>;
+    const messages = (channelValues.messages ?? []) as Record<string, unknown>[];
+
+    // Add the new message to the messages array
+    messages.push(message);
+    channelValues.messages = messages;
+    checkpoint.channel_values = channelValues;
+
+    // Update the checkpoint in the database
+    await this.#db<CheckpointRow>('checkpoints')
+      .where({ conversation_id: threadId, checkpoint_id: row.checkpoint_id })
+      .update({
+        state: JSON.stringify(checkpoint),
+        updated_at: new Date().toISOString(),
+      });
+
+    return true;
+  };
 }
 
 export type { CheckpointRow };

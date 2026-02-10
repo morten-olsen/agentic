@@ -143,6 +143,9 @@ class GraphExecutor {
   /**
    * Executes the graph for a new conversation or continued chat.
    *
+   * When a checkpoint exists, we use the checkpoint state and only add the new user message.
+   * This prevents duplicate messages from being sent to the LLM.
+   *
    * @param context - The execution context with tools and system prompt
    * @param input - The initial state including messages
    * @returns The execution result
@@ -150,20 +153,51 @@ class GraphExecutor {
   execute = async (context: ExecutionContext, input: ExecuteInput): Promise<ExecutionResult> => {
     const compiledGraph = this.#buildGraph(context);
 
-    const result = await compiledGraph.invoke(
-      {
+    // Check if a checkpoint exists for this conversation
+    const existingState = await compiledGraph.getState({
+      configurable: { thread_id: context.conversationId },
+    });
+    const hasCheckpoint = existingState.values && Object.keys(existingState.values).length > 0;
+
+    let invokeState: Record<string, unknown>;
+
+    if (hasCheckpoint) {
+      // Checkpoint exists - use checkpoint messages and only add the new user message
+      // The checkpoint already contains the full conversation history including any
+      // injected messages (like notifications), so we don't need the database history.
+      const checkpointMessages = (existingState.values as OrchestratorState)?.messages ?? [];
+      const inputMessages = input.messages;
+
+      // The new user message is the last HumanMessage in the input
+      // (it was just stored in the database before execute was called)
+      const lastInputMessage = inputMessages[inputMessages.length - 1];
+      const isNewUserMessage = lastInputMessage && lastInputMessage._getType() === 'human';
+
+      invokeState = {
+        conversationId: context.conversationId,
+        // If there's a new user message, append it; otherwise just use checkpoint
+        messages: isNewUserMessage ? [...checkpointMessages, lastInputMessage] : checkpointMessages,
+        turnCount: input.turnCount ?? (existingState.values as OrchestratorState)?.turnCount ?? 0,
+        maxTurns: input.maxTurns ?? 20,
+        turnLimitReached: false,
+        activeSkills: input.activeSkills ?? (existingState.values as OrchestratorState)?.activeSkills ?? [],
+      };
+    } else {
+      // No checkpoint - use all input messages as initial state
+      invokeState = {
         conversationId: context.conversationId,
         messages: input.messages,
         turnCount: input.turnCount ?? 0,
         maxTurns: input.maxTurns ?? 20,
         turnLimitReached: false,
         activeSkills: input.activeSkills ?? [],
-      },
-      {
-        configurable: { thread_id: context.conversationId },
-        recursionLimit: 150, // Allow up to ~30 turns (5 nodes per turn)
-      },
-    );
+      };
+    }
+
+    const result = await compiledGraph.invoke(invokeState, {
+      configurable: { thread_id: context.conversationId },
+      recursionLimit: 150, // Allow up to ~30 turns (5 nodes per turn)
+    });
 
     return this.#analyzeResult(result as OrchestratorState);
   };

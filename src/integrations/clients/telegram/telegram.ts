@@ -5,7 +5,7 @@ import type { Knex } from 'knex';
 import type { Services } from '../../../core/services/services.ts';
 import { DatabaseService } from '../../../core/database/database.ts';
 import { OrchestratorService } from '../../../agent/orchestrator/orchestrator.ts';
-import { getConversation, getMessages, addMessage } from '../../../agent/orchestrator/orchestrator.store.ts';
+import { getConversation, getMessages } from '../../../agent/orchestrator/orchestrator.store.ts';
 import { PersonalityService } from '../../../agent/personality/personality.ts';
 import { TriggerService } from '../../../features/triggers/triggers.ts';
 import { CalendarSyncService } from '../../../domain/calendar/calendar-sync.ts';
@@ -541,9 +541,12 @@ class TelegramClientService {
    * Injects a notification into the user's active conversation.
    * This allows the agent to have context about background notifications
    * when the user asks follow-up questions.
+   *
+   * The notification is injected into both the database and the LangGraph
+   * checkpoint state to ensure consistency.
    */
   injectNotificationToActiveConversation = async (notification: Notification): Promise<void> => {
-    if (!this.#config?.ownerId) {
+    if (!this.#config?.ownerId || !this.#orchestrator) {
       return;
     }
 
@@ -559,15 +562,12 @@ class TelegramClientService {
     // Format the notification as an assistant message
     const content = `[Background notification sent]\n**${notification.title}**\n${notification.body}`;
 
-    await addMessage(this.#db(), activeChat.conversationId, {
-      role: 'assistant',
-      content,
-      metadata: {
-        notificationId: notification.id,
-        notificationType: notification.type,
-        notificationUrgency: notification.urgency,
-        injectedNotification: true,
-      },
+    // Use the orchestrator's inject method which handles both DB and checkpoint
+    await this.#orchestrator.injectAssistantMessage(activeChat.conversationId, content, {
+      notificationId: notification.id,
+      notificationType: notification.type,
+      notificationUrgency: notification.urgency,
+      injectedNotification: true,
     });
   };
 }

@@ -71,7 +71,8 @@
       "Bash(npm search:*)",
       "Bash(pnpm search:*)",
       "Bash(pnpm info:*)",
-      "Bash(pnpm remove:*)"
+      "Bash(pnpm remove:*)",
+      "Bash(git show:*)"
     ]
   }
 }
