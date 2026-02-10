@@ -828,10 +828,13 @@ class OrchestratorService {
 
   /**
    * Invokes the orchestrator in background mode for trigger-initiated conversations.
-   * Creates a new conversation, runs the agent with the given goal, and returns the conversation ID.
+   * Creates a new conversation, runs the agent with the given goal, and returns the result.
    * The agent runs non-interactively and can use the notify tool to communicate with the user.
    */
-  invokeBackground = async (goal: string, triggerContext: TriggerContext): Promise<string> => {
+  invokeBackground = async (
+    goal: string,
+    triggerContext: TriggerContext,
+  ): Promise<{ conversationId: string; responseContent: string }> => {
     this.#ensureConfigured();
 
     // Create a new conversation for this trigger invocation
@@ -897,7 +900,10 @@ class OrchestratorService {
       }
 
       console.log(`Background invocation completed for trigger: ${triggerContext.triggerName}`);
-      return conversationId;
+      return {
+        conversationId,
+        responseContent: response.content,
+      };
     } catch (error) {
       // Log full error details for debugging
       this.#logService?.error('orchestrator', 'Background invocation failed', error, {

@@ -507,14 +507,19 @@ class TriggerService {
       };
 
       // Invoke the orchestrator in background mode
-      const conversationId = await this.#orchestrator.invokeBackground(trigger.goal, triggerContext);
+      const { conversationId, responseContent } = await this.#orchestrator.invokeBackground(
+        trigger.goal,
+        triggerContext,
+      );
 
       // Record the conversation
       await addTriggerConversation(this.#db(), triggerId, conversationId);
 
-      // Reset consecutive failures on success
+      // Save the agent's response as the continuation for the next invocation
+      // This allows the agent to leave notes for its future self
       await updateTrigger(this.#db(), triggerId, {
         consecutiveFailures: 0,
+        continuation: responseContent || null,
       });
 
       // Emit event for trigger fired

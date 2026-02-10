@@ -53,13 +53,14 @@ describe('Trigger Invocation Flow', () => {
       schedule: { type: 'cron', expression: '0 * * * *' },
     };
 
-    const conversationId = await orchestrator.invokeBackground('Check for any pending tasks', triggerContext);
+    const result = await orchestrator.invokeBackground('Check for any pending tasks', triggerContext);
 
-    expect(conversationId).toBeDefined();
-    expect(typeof conversationId).toBe('string');
+    expect(result.conversationId).toBeDefined();
+    expect(typeof result.conversationId).toBe('string');
+    expect(result.responseContent).toBeDefined();
 
     // Verify conversation was created
-    const conversation = await orchestrator.getConversation(conversationId);
+    const conversation = await orchestrator.getConversation(result.conversationId);
     expect(conversation).not.toBeNull();
     expect(conversation?.title).toContain('test-trigger');
   });
@@ -100,9 +101,9 @@ describe('Trigger Invocation Flow', () => {
       schedule: { type: 'once', at: new Date().toISOString() },
     };
 
-    const conversationId = await orchestrator.invokeBackground('Remind the user about pending tasks', triggerContext);
+    const result = await orchestrator.invokeBackground('Remind the user about pending tasks', triggerContext);
 
-    expect(conversationId).toBeDefined();
+    expect(result.conversationId).toBeDefined();
     expect(notifyToolCalled).toBe(true);
 
     // Verify multiple LLM calls were made (tool call + response)
@@ -161,12 +162,9 @@ describe('Trigger Invocation Flow', () => {
       schedule: { type: 'once', at: trigger.schedule.type === 'once' ? trigger.schedule.at : '' },
     };
 
-    const conversationId = await orchestrator.invokeBackground(
-      'Deliver reminder and delete the trigger',
-      triggerContext,
-    );
+    const result = await orchestrator.invokeBackground('Deliver reminder and delete the trigger', triggerContext);
 
-    expect(conversationId).toBeDefined();
+    expect(result.conversationId).toBeDefined();
     expect(callCount).toBe(3);
 
     // Verify the trigger was deleted
@@ -223,9 +221,9 @@ describe('Trigger Invocation Flow', () => {
       schedule: { type: 'once', at: trigger.schedule.type === 'once' ? trigger.schedule.at : '' },
     };
 
-    const conversationId = await orchestrator.invokeBackground('Execute multiple tools', triggerContext);
+    const result = await orchestrator.invokeBackground('Execute multiple tools', triggerContext);
 
-    expect(conversationId).toBeDefined();
+    expect(result.conversationId).toBeDefined();
 
     // Verify both tools were called
     expect(callCount).toBe(2);
@@ -283,9 +281,9 @@ describe('Trigger Invocation Flow', () => {
     };
 
     // Should complete without hanging
-    const conversationId = await orchestrator.invokeBackground('Check triggers and notify', triggerContext);
+    const result = await orchestrator.invokeBackground('Check triggers and notify', triggerContext);
 
-    expect(conversationId).toBeDefined();
+    expect(result.conversationId).toBeDefined();
     expect(callCount).toBe(3);
   });
 

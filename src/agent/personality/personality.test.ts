@@ -2,9 +2,10 @@ import { describe, it, beforeEach, afterEach, expect } from 'vitest';
 
 import { Services } from '../../core/services/services.ts';
 import { DatabaseService, createDatabaseService } from '../../core/database/database.ts';
+import type { TriggerContext } from '../../features/triggers/triggers.schemas.ts';
 
 import { PersonalityService } from './personality.ts';
-import { buildSystemPrompt } from './personality.prompts.ts';
+import { buildSystemPrompt, generateTriggerInstructions } from './personality.prompts.ts';
 import type { PersonalityConfig, AgentContext } from './personality.ts';
 
 describe('PersonalityService', () => {
@@ -293,5 +294,83 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Hello');
     expect(prompt).toContain('How can I help');
     expect(prompt).toContain('Friendly greeting');
+  });
+});
+
+describe('generateTriggerInstructions', () => {
+  const baseTriggerContext: TriggerContext = {
+    triggerId: 'trigger-1',
+    triggerName: 'Test Trigger',
+    goal: 'Check train delays',
+    invocationCount: 5,
+    schedule: {
+      type: 'cron',
+      expression: '0 * * * *',
+    },
+    continuation: null,
+    continuationUpdatedAt: null,
+  };
+
+  it('includes basic trigger info', () => {
+    const instructions = generateTriggerInstructions(baseTriggerContext);
+
+    expect(instructions).toContain('## Trigger Mode');
+    expect(instructions).toContain('Check train delays');
+    expect(instructions).toContain('Test Trigger');
+    expect(instructions).toContain('**Invocation #:** 5');
+    expect(instructions).toContain('0 * * * *');
+  });
+
+  it('includes continuation note when present', () => {
+    const contextWithContinuation: TriggerContext = {
+      ...baseTriggerContext,
+      continuation: 'Notified user about 15-minute delay on Northern line.',
+      continuationUpdatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
+    };
+
+    const instructions = generateTriggerInstructions(contextWithContinuation);
+
+    expect(instructions).toContain('Note from your previous invocation');
+    expect(instructions).toContain('2 hours ago');
+    expect(instructions).toContain('Notified user about 15-minute delay on Northern line.');
+  });
+
+  it('does not include continuation section when null', () => {
+    const instructions = generateTriggerInstructions(baseTriggerContext);
+
+    expect(instructions).not.toContain('Note from your previous invocation');
+  });
+
+  it('includes instruction about automatic continuation from response', () => {
+    const instructions = generateTriggerInstructions(baseTriggerContext);
+
+    expect(instructions).toContain('final response will automatically be saved');
+    expect(instructions).toContain('note for your next invocation');
+    expect(instructions).toContain('note to your future self');
+  });
+
+  it('includes setup context when provided', () => {
+    const contextWithSetup: TriggerContext = {
+      ...baseTriggerContext,
+      setupContext: 'User takes the 8:30 train from Kings Cross',
+    };
+
+    const instructions = generateTriggerInstructions(contextWithSetup);
+
+    expect(instructions).toContain('User takes the 8:30 train from Kings Cross');
+  });
+
+  it('shows one-time schedule for non-cron triggers', () => {
+    const oneTimeTrigger: TriggerContext = {
+      ...baseTriggerContext,
+      schedule: {
+        type: 'once',
+        at: '2024-01-15T10:00:00Z',
+      },
+    };
+
+    const instructions = generateTriggerInstructions(oneTimeTrigger);
+
+    expect(instructions).toContain('One-time trigger');
   });
 });

@@ -248,6 +248,27 @@ const generateExamplesSection = (examples: PersonalityConfig['examples']): strin
 };
 
 /**
+ * Formats a timestamp as a relative time string (e.g., "2 hours ago").
+ */
+const formatRelativeTime = (isoTimestamp: string | null): string => {
+  if (!isoTimestamp) return 'unknown time';
+
+  const then = new Date(isoTimestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - then.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 1) return 'just now';
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+};
+
+/**
  * Generates trigger-specific instructions when running from a trigger invocation.
  */
 const generateTriggerInstructions = (triggerContext: TriggerContext): string => {
@@ -272,6 +293,15 @@ const generateTriggerInstructions = (triggerContext: TriggerContext): string => 
     lines.push(`**Schedule:** One-time trigger`);
   }
 
+  // Include continuation note from previous invocation if available
+  if (triggerContext.continuation) {
+    lines.push('');
+    lines.push(
+      `**Note from your previous invocation** (written ${formatRelativeTime(triggerContext.continuationUpdatedAt)}):`,
+    );
+    lines.push(`> ${triggerContext.continuation}`);
+  }
+
   lines.push('');
   lines.push('**Instructions:**');
   lines.push('- If you discover something the user should know, use the `notify` tool to send them a message.');
@@ -281,6 +311,9 @@ const generateTriggerInstructions = (triggerContext: TriggerContext): string => 
   lines.push('- If the trigger parameters need adjustment, use `update_trigger` (no ID needed).');
   lines.push('- You have access to all normal tools plus trigger management and notify tools.');
   lines.push('- Only notify if you have something meaningful to share. Do not notify just to confirm the trigger ran.');
+  lines.push(
+    '- Your final response will automatically be saved as a note for your next invocation. Use this to remember what you found, what you notified the user about, and any state you need to track. Write it like a note to your future self.',
+  );
 
   return lines.join('\n');
 };
