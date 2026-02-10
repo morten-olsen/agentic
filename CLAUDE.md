@@ -38,6 +38,7 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 | `docs/skills.md` | Skills system usage and development |
 | `docs/artifacts.md` | Server-side storage for large tool responses |
 | `docs/memory-consolidation.md` | Memory consolidation system and background jobs |
+| `docs/triggers.md` | Scheduled agent invocations and notifications |
 | `docs/specs.md` | How to work with specifications |
 | `spec/001-agent.md` | Main technical specification |
 
