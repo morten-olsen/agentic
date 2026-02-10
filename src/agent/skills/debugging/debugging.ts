@@ -13,6 +13,7 @@ import {
   debugGetLogContextTool,
   debugLogStatsTool,
   debugGetSystemPromptTool,
+  debugListAvailableToolsTool,
 } from './debugging.tools.ts';
 
 // ============================================================================
@@ -119,6 +120,7 @@ Use \`DebugSchedulerState\` to see what's actually scheduled in memory.
 | \`debugging_get_log_context\` | Get logs surrounding a specific entry |
 | \`debugging_log_stats\` | Aggregate log statistics |
 | \`debugging_get_system_prompt\` | Generate and inspect the system prompt |
+| \`debugging_list_available_tools\` | List all registered tools and skills |
 
 ## Log Inspection
 
@@ -185,6 +187,30 @@ Use \`debugging_get_system_prompt\` to generate and inspect the system prompt th
 - \`includeContext: true\` (default): Include current context (time, location, etc.)
 - \`includeContext: false\`: Only personality config, no live context
 - \`personalityId\`: Use a specific personality config (default: 'default')
+
+## Tool Inspection
+
+Use \`debugging_list_available_tools\` to see all tools registered with the orchestrator.
+
+### What it shows
+
+- **Base tools**: Always available tools (calendar, contacts, memory, etc.)
+- **Skill tools**: Tools grouped by skill (require skill activation to use)
+- **Risk levels**: The risk level of each tool (low, medium, high, critical)
+- **Categories**: How tools are organized
+
+### When to use
+
+- **Understanding capabilities**: See what the agent can do
+- **Debugging tool issues**: Verify a tool is registered
+- **Category breakdown**: Understand tool organization
+- **Risk analysis**: Review risk levels of available tools
+
+### Options
+
+- \`category\`: Filter to a specific category (e.g., 'calendar', 'memory')
+- \`includeSkillTools\`: Whether to include skill tools (default: true)
+- \`includeRiskInfo\`: Whether to include risk level info (default: true)
 `;
 
 // ============================================================================
@@ -211,6 +237,7 @@ const debuggingSkill: SkillDefinition = {
     debugGetLogContextTool,
     debugLogStatsTool,
     debugGetSystemPromptTool,
+    debugListAvailableToolsTool,
   ] as ToolDefinition[],
 
   domainKnowledge: DEBUGGING_DOMAIN_KNOWLEDGE,

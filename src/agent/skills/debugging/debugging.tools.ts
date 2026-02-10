@@ -7,6 +7,7 @@ import { getConversation, getMessages, listConversations } from '../../../agent/
 import { getTelegramChatByConversation } from '../../../integrations/clients/telegram/telegram.store.ts';
 import { ContextBuilderService } from '../../../agent/context/context.ts';
 import { PersonalityService } from '../../../agent/personality/personality.ts';
+import { OrchestratorService } from '../../../agent/orchestrator/orchestrator.ts';
 
 // Helper to convert null to undefined
 const nullToUndefined = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
@@ -1070,6 +1071,171 @@ Useful for:
 };
 
 // ============================================================================
+// debugging_list_available_tools
+// ============================================================================
+
+const debugListAvailableToolsInputSchema = z.object({
+  category: z.string().nullish().describe('Filter by category'),
+  includeSkillTools: z.boolean().nullish().default(true).describe('Include tools from skills'),
+  includeRiskInfo: z.boolean().nullish().default(true).describe('Include risk level information'),
+});
+
+const debugListAvailableToolsOutputSchema = z.object({
+  baseTools: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      category: z.string(),
+      description: z.string(),
+      riskLevel: z.string().optional(),
+      tags: z.array(z.string()),
+    }),
+  ),
+  skills: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string(),
+      activationRisk: z.string(),
+      tools: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          category: z.string(),
+          description: z.string(),
+          riskLevel: z.string().optional(),
+        }),
+      ),
+    }),
+  ),
+  summary: z.object({
+    totalBaseTools: z.number(),
+    totalSkills: z.number(),
+    totalSkillTools: z.number(),
+    categoryCounts: z.record(z.string(), z.number()),
+  }),
+});
+
+type DebugListAvailableToolsInput = z.infer<typeof debugListAvailableToolsInputSchema>;
+type DebugListAvailableToolsInputRaw = z.input<typeof debugListAvailableToolsInputSchema>;
+type DebugListAvailableToolsOutput = z.infer<typeof debugListAvailableToolsOutputSchema>;
+
+const debugListAvailableToolsTool: ToolDefinition<
+  DebugListAvailableToolsInput,
+  DebugListAvailableToolsOutput,
+  DebugListAvailableToolsInputRaw
+> = {
+  id: 'debugging_list_available_tools',
+  name: 'DebugListAvailableTools',
+  description: `List all tools currently registered with the orchestrator.
+
+Shows:
+- Base tools (always available)
+- Skill tools (grouped by skill, require activation)
+- Risk levels for each tool
+- Category breakdown
+
+Use this to understand what capabilities are available and how they're organized.`,
+  category: 'debugging',
+  inputSchema: debugListAvailableToolsInputSchema,
+  outputSchema: debugListAvailableToolsOutputSchema,
+  risk: {
+    level: 'low',
+    reason: 'Read-only query of tool registry',
+    potentialImpact: 'None',
+    reversible: true,
+    categories: [],
+  },
+  tags: ['debugging', 'tools', 'read'],
+  examples: [
+    { input: {}, description: 'List all available tools' },
+    { input: { category: 'calendar' }, description: 'List only calendar tools' },
+    { input: { includeSkillTools: false }, description: 'List only base tools' },
+  ],
+  execute: async (
+    input: DebugListAvailableToolsInput,
+    context: ToolContext,
+  ): Promise<DebugListAvailableToolsOutput> => {
+    const orchestratorService = context.services.get(OrchestratorService);
+    const toolRegistry = orchestratorService.toolRegistry;
+    const skillRegistry = orchestratorService.skillRegistry;
+
+    // Get base tools
+    let baseTools = toolRegistry.getAll();
+    if (input.category) {
+      baseTools = baseTools.filter((t) => t.category === input.category);
+    }
+
+    const baseToolsOutput = baseTools.map((tool) => {
+      const riskLevel = input.includeRiskInfo && 'level' in tool.risk ? (tool.risk.level as string) : undefined;
+      return {
+        id: tool.id,
+        name: tool.name,
+        category: tool.category,
+        description: tool.description.split('\n')[0], // First line only
+        riskLevel,
+        tags: tool.tags,
+      };
+    });
+
+    // Get skills and their tools
+    const skillsOutput: DebugListAvailableToolsOutput['skills'] = [];
+    if (input.includeSkillTools) {
+      const allSkills = skillRegistry.getAll();
+      for (const skill of allSkills) {
+        let skillTools = skill.tools;
+        if (input.category) {
+          skillTools = skillTools.filter((t) => t.category === input.category);
+        }
+        if (skillTools.length === 0 && input.category) {
+          continue; // Skip skills with no matching tools when filtering
+        }
+        skillsOutput.push({
+          id: skill.id,
+          name: skill.name,
+          description: skill.description,
+          activationRisk: skill.activationRisk,
+          tools: skillTools.map((tool) => {
+            const riskLevel = input.includeRiskInfo && 'level' in tool.risk ? (tool.risk.level as string) : undefined;
+            return {
+              id: tool.id,
+              name: tool.name,
+              category: tool.category,
+              description: tool.description.split('\n')[0],
+              riskLevel,
+            };
+          }),
+        });
+      }
+    }
+
+    // Build category counts
+    const categoryCounts: Record<string, number> = {};
+    for (const tool of baseToolsOutput) {
+      categoryCounts[tool.category] = (categoryCounts[tool.category] ?? 0) + 1;
+    }
+    for (const skill of skillsOutput) {
+      for (const tool of skill.tools) {
+        categoryCounts[tool.category] = (categoryCounts[tool.category] ?? 0) + 1;
+      }
+    }
+
+    const totalSkillTools = skillsOutput.reduce((sum, skill) => sum + skill.tools.length, 0);
+
+    return {
+      baseTools: baseToolsOutput,
+      skills: skillsOutput,
+      summary: {
+        totalBaseTools: baseToolsOutput.length,
+        totalSkills: skillsOutput.length,
+        totalSkillTools,
+        categoryCounts,
+      },
+    };
+  },
+};
+
+// ============================================================================
 // Exports
 // ============================================================================
 
@@ -1085,4 +1251,5 @@ export {
   debugGetLogContextTool,
   debugLogStatsTool,
   debugGetSystemPromptTool,
+  debugListAvailableToolsTool,
 };
