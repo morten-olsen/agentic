@@ -4,57 +4,143 @@
 
 A personal AI assistant that knows who you are, anticipates your needs, and handles complex multi-step tasks - like having Jarvis for yourself.
 
-## What Makes GLaDOS Different
+## Vision
 
-Unlike generic chatbots, GLaDOS maintains a **rich model of you**:
+Most AI assistants are stateless chatbots. You start every conversation from scratch, re-explaining context, preferences, and history. GLaDOS takes a different approach: it maintains a **persistent model of you** and operates as a true assistant rather than a question-answering service.
 
-- **Identity**: Your projects, goals, and routines shape every interaction
-- **Relationships**: Knows who's important in your life and work
-- **Context**: Calendar awareness, location context, and time-sensitive information
-- **Memory**: Remembers past conversations, learns procedures, builds knowledge
+GLaDOS is designed to:
 
-And it's **proactive, not just reactive**:
+- **Know who you are** - Your projects, goals, relationships, and routines shape every interaction
+- **Anticipate your needs** - Proactively surface information, follow up on tasks, and remind you about important things
+- **Handle complex work** - Manage multi-step tasks that span hours or days, not just single-turn requests
+- **Learn over time** - Build long-term memory, recognize patterns, and improve with every interaction
+- **Maintain your trust** - Human-in-the-loop controls for risky actions, transparent about what it's doing
 
-- Morning briefings with your day ahead
-- Follows up on stale tasks
-- Reminds you about upcoming meetings needing prep
-- Learns how you like things done
+## How It Works
 
-## Quick Start
+### The User Model
 
-### Prerequisites
+At the core of GLaDOS is a rich understanding of you:
 
-- Node.js 22+
-- pnpm
-- An LLM API key (OpenRouter recommended)
+- **Identity**: Name, timezone, working hours, communication preferences
+- **Projects**: What you're working on, status, priorities, related people
+- **Goals**: Short and long-term objectives you're pursuing
+- **Routines**: Regular patterns in your day and week
+- **Contacts**: People in your life, relationships, interaction history
 
-### Setup
+This isn't just stored data - it actively shapes how GLaDOS responds. It knows that "the client meeting" refers to Acme Corp because that's your active project. It knows not to schedule things during your focus blocks. It remembers that Sarah prefers email over Slack.
 
-```bash
-# Clone and install
-git clone <repo-url>
-cd glados
-pnpm install
+### Memory System
 
-# Configure (get a key from openrouter.ai/keys)
-cp config/local.json.example config/local.json
-# Edit config/local.json with your API key
+GLaDOS maintains persistent memory across all conversations:
 
-# Start the CLI
-pnpm cli
+- **Episodic Memory**: Remembers past conversations and what was discussed
+- **Semantic Memory**: Extracts and stores facts, preferences, and knowledge
+- **Entity Knowledge**: Builds detailed profiles of people, projects, and places
+- **Procedural Memory**: Learns how you like things done
+
+The memory system uses activation-based decay - frequently accessed memories stay readily available, while older memories consolidate into higher-level knowledge. This keeps the system responsive even with years of accumulated information.
+
+### Trigger System
+
+GLaDOS can schedule future invocations of itself:
+
+- **One-time triggers**: "Remind me to call Mom on Sunday at 3pm"
+- **Recurring triggers**: Daily briefings, weekly reviews, hourly monitoring
+- **Stateful monitoring**: Track changes over time, only notify when something actually changes
+
+When a trigger fires, GLaDOS runs in the background with a specific goal. It can access all its normal capabilities and notify you via Telegram if it discovers something relevant.
+
+### Task Management
+
+For work that spans multiple interactions:
+
+- **User Tasks**: Things you need to do, with deadlines and priorities
+- **Delegated Tasks**: Multi-step work GLaDOS handles autonomously
+- **Follow-ups**: Tracking items waiting on others
+
+Delegated tasks can involve multiple tool calls, web searches, file operations, and more - all managed across sessions with human approval for risky steps.
+
+### Tools and Skills
+
+GLaDOS has access to tools organized into:
+
+- **Core Tools**: Memory, calendar, contacts, tasks, notifications
+- **External Tools**: Web search, file operations, API calls
+- **Skills**: Domain-specific capability bundles that activate on demand
+
+Tools are risk-gated. Low-risk actions (reading data, searching) happen immediately. High-risk actions (sending messages, modifying files, making purchases) require your approval.
+
+### Integrations
+
+Current external service integrations:
+
+- **Calendar**: Google Calendar sync for scheduling awareness
+- **Health**: Oura Ring data for sleep, activity, and readiness insights
+- **Home**: Home Assistant for smart home awareness and control
+- **Notifications**: Telegram for mobile alerts and conversations
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           GLaDOS Core                                │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Foundation Layer                                                    │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
+│  │  User    │ │ Contacts │ │ Calendar │ │ Location │ │  Memory  │  │
+│  │  Model   │ │          │ │          │ │          │ │          │  │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘  │
+│       └────────────┴────────────┴────────────┴────────────┘        │
+│                                  │                                   │
+│                                  ▼                                   │
+│                        ┌─────────────────┐                          │
+│                        │ Context Builder │                          │
+│                        └────────┬────────┘                          │
+│                                 │                                    │
+│  Orchestration Layer            ▼                                    │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │                                                               │   │
+│  │  ┌─────────┐    ┌─────────────┐    ┌──────────┐             │   │
+│  │  │Triggers │───▶│ Orchestrator│◀───│  Clients │             │   │
+│  │  │         │    │ (LangGraph) │    │(CLI/Tgram)│            │   │
+│  │  └─────────┘    └──────┬──────┘    └──────────┘             │   │
+│  │                        │                                      │   │
+│  │         ┌──────────────┼──────────────┐                      │   │
+│  │         ▼              ▼              ▼                      │   │
+│  │   ┌──────────┐  ┌───────────┐  ┌───────────┐                │   │
+│  │   │  Tasks   │  │Risk Gate  │  │  Notify   │                │   │
+│  │   │  Queue   │  │& Approvals│  │  Router   │                │   │
+│  │   └──────────┘  └─────┬─────┘  └───────────┘                │   │
+│  │                       │                                       │   │
+│  │         ┌─────────────┼─────────────┐                        │   │
+│  │         ▼             ▼             ▼                        │   │
+│  │   ┌──────────┐  ┌──────────┐  ┌──────────┐                  │   │
+│  │   │  Tools   │  │  Skills  │  │ External │                  │   │
+│  │   │          │  │          │  │ Services │                  │   │
+│  │   └──────────┘  └──────────┘  └──────────┘                  │   │
+│  │                                                               │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Running the Telegram Bot
+**Tech Stack**: Node.js 22+ | LangChain + LangGraph | SQLite | Zod | Vitest
 
-For mobile access, GLaDOS can run as a Telegram bot:
+## Interfaces
 
-```bash
-export GLADOS_TELEGRAM_BOT_TOKEN=your-token    # From @BotFather
-export GLADOS_TELEGRAM_OWNER_ID=your-user-id   # From @userinfobot
-pnpm telegram
-```
+### Command Line Interface
 
-## Example Interaction
+The CLI provides a desktop terminal interface for direct interaction. Supports rich formatting, multi-turn conversations, and full access to all capabilities.
+
+### Telegram Bot
+
+For mobile access, GLaDOS runs as a Telegram bot. This is also the notification channel for trigger-invoked sessions - when GLaDOS discovers something important while running in the background, it notifies you here.
+
+## Example Interactions
+
+### Context-Aware Assistance
 
 ```
 You: What's on my schedule today?
@@ -83,103 +169,76 @@ GLaDOS: Acme Corp - Website Redesign (Phase 2)
   - Your review of the requirements doc
   - Schedule design review meeting
 
-  The requirements doc has 3 items worth discussing:
-  1. They're proposing React (you've preferred Vue)
-  2. Timeline assumes 2 sprints - aggressive
-  3. No accessibility requirements mentioned
-
-  Want me to add these to your notes for the call?
+  The requirements doc has 3 items worth discussing...
 ```
 
-See [Usage Examples](docs/usage-examples.md) for more conversation patterns.
-
-## Features
-
-### Foundation Layer
-- **User Model** - Identity, projects, goals, routines
-- **Contacts** - People, relationships, interaction history
-- **Calendar** - Events, scheduling, time awareness
-- **Location** - Places, travel context
-- **Memory** - Semantic search, entity knowledge, procedural memory
-
-### Intelligent Behavior
-- **Tool System** - Extensible tools with risk-based approval
-- **Human-in-the-Loop** - Approval flows for risky actions
-- **Task Management** - Multi-step workflows that span hours or days
-- **Proactive Checks** - Scheduled background processing
-- **Smart Notifications** - Attention-aware delivery
-
-### Multiple Interfaces
-- **CLI** - Desktop terminal interface
-- **Telegram** - Mobile chat interface
-
-## Architecture
+### Proactive Monitoring
 
 ```
-Foundation Layer          Orchestration Layer
-┌─────────────────┐      ┌─────────────────────┐
-│ User Model      │      │ LangGraph Agent     │
-│ Contacts        │ ───▶ │ Tool Registry       │
-│ Calendar        │      │ Interrupt Gate      │
-│ Location        │      │ Proactive Scheduler │
-│ Memory          │      │ Notification Router │
-│ Tasks           │      └─────────────────────┘
-└─────────────────┘
+[8:00 AM - Trigger fires: Daily Briefing]
+
+GLaDOS: Good morning! Here's your Tuesday briefing:
+
+  Weather: 52°F, cloudy, rain expected after 4pm
+
+  Calendar: 3 meetings today (standup, client call, 1:1)
+
+  Tasks due: Review Acme requirements (due today)
+
+  Heads up: Sarah's birthday is tomorrow
 ```
 
-**Tech Stack**: Node.js 22+ | LangChain + LangGraph | SQLite | Zod | Vitest
+### Stateful Change Detection
 
-## Commands
+```
+[Hourly trigger: Train Status Monitor]
 
-| Command | Description |
-|---------|-------------|
-| `pnpm cli` | Start interactive CLI |
-| `pnpm telegram` | Start Telegram bot |
-| `pnpm proactive` | Run proactive scheduler |
-| `pnpm test` | Run all tests |
+First check:
+  - Detects 15-minute delay
+  - Notifies you: "Northern line delayed 15 minutes"
+  - Records: "Notified about delay"
 
-## Configuration
+Second check:
+  - Same delay, reads previous note
+  - Skips notification (already told you)
 
-GLaDOS uses layered configuration. Set via environment or `config/local.json`:
+Third check:
+  - Delay resolved
+  - Notifies: "Good news - Northern line back on schedule"
+```
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GLADOS_LLM_API_KEY` | LLM API key | *required* |
-| `GLADOS_LLM_MODEL` | Model identifier | `anthropic/claude-sonnet-4` |
-| `GLADOS_DB_PATH` | Database location | `./glados.db` |
-| `GLADOS_TELEGRAM_BOT_TOKEN` | Telegram bot token | - |
-| `GLADOS_TELEGRAM_OWNER_ID` | Authorized user ID | - |
+## Project Status
 
-See [Configuration Guide](docs/configuration.md) for all options.
+**Version 1.1** - Memory Consolidation Complete
+
+Implemented capabilities:
+
+- **Foundation**: User Model, Contacts, Calendar, Location
+- **Memory**: Semantic search, entity knowledge, activation decay, consolidation
+- **Orchestration**: LangGraph agent, risk-gated tools, human-in-the-loop approvals
+- **Tasks**: User tasks, delegated workflows, follow-ups
+- **Triggers**: Scheduled invocations with continuation context
+- **Notifications**: Telegram delivery with attention budget
+- **Skills**: Domain-specific capability bundles with gated activation
+- **Health**: Oura Ring integration for sleep and activity data
+- **Interfaces**: CLI and Telegram bot
+
+See [spec/future-phases.md](spec/future-phases.md) for planned features including reactive events (webhooks, email triggers) and advanced learning capabilities.
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Usage Examples](docs/usage-examples.md) | Example conversations and interaction patterns |
-| [Getting Started](docs/getting-started.md) | Full setup guide |
-| [Development Guide](docs/development.md) | Architecture and contributing |
-| [Adding Tools](docs/adding-tools.md) | Extending agent capabilities |
-| [External Clients](docs/external-clients.md) | Building new interfaces |
-| [Coding Standards](docs/coding-standards.md) | TypeScript conventions |
-| [Specification](spec/001-agent.md) | Technical specification |
+| [Usage Examples](docs/usage-examples.md) | Conversation patterns and interaction examples |
+| [Getting Started](docs/getting-started.md) | Setup and configuration guide |
+| [Configuration](docs/configuration.md) | All configuration options |
+| [Triggers](docs/triggers.md) | Scheduled agent invocations |
+| [Skills](docs/skills.md) | Domain-specific capability system |
+| [Memory Consolidation](docs/memory-consolidation.md) | Long-term memory management |
+| [External Services](docs/external-services.md) | Integrating external services |
 
-## Project Status
-
-**Version 1.0** - Initial implementation complete with 897+ passing tests.
-
-Implemented:
-- Foundation Layer (User Model, Contacts, Calendar, Location, Memory)
-- Orchestration (Tools, Interrupts, Agent Registry)
-- Task Management (User Tasks, Delegated Workflows)
-- Trigger System for scheduled agent invocations
-- Notification System with attention budget
-- Skills System for domain-specific capabilities
-- Artifacts System for large data storage
-- CLI and Telegram clients
-
-See [spec/future-phases.md](spec/future-phases.md) for planned features.
+For development documentation, see [CLAUDE.md](CLAUDE.md).
 
 ## License
 
-MIT
+AGPL-3.0
