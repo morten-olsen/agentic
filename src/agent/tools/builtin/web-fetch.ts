@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
+import type { Services } from '../../../core/services/services.ts';
 import { ArtifactService } from '../../../features/artifacts/artifacts.ts';
-import type { ToolDefinition, ToolContext } from '../tools.ts';
+import { DomainWhitelistService } from '../../../features/risk-policies/risk-policies.ts';
+import type { ToolDefinition, ToolContext, RiskProfile, DynamicRiskProfile } from '../tools.ts';
 
 import {
   WebFetchError,
@@ -342,27 +344,75 @@ const execute = async (input: WebFetchInput, context: ToolContext): Promise<WebF
 };
 
 // ============================================================================
+// Dynamic Risk Evaluation
+// ============================================================================
+
+/**
+ * Default risk profile for non-whitelisted domains.
+ */
+const defaultWebFetchRisk: RiskProfile = {
+  level: 'medium',
+  reason: 'Makes external HTTP requests to arbitrary URLs',
+  potentialImpact: 'Network requests to external services, potential information disclosure',
+  reversible: true,
+  categories: ['external_communication'],
+};
+
+/**
+ * Dynamic risk evaluator for web.fetch.
+ * Returns low risk for whitelisted domains, medium risk otherwise.
+ */
+const webFetchRiskEvaluator = async (input: WebFetchInput, services: Services): Promise<RiskProfile> => {
+  try {
+    // Parse the URL to extract the domain
+    const parsed = webFetchInputSchema.safeParse(input);
+    if (!parsed.success) {
+      return defaultWebFetchRisk;
+    }
+
+    const url = new URL(parsed.data.url);
+    const domain = url.hostname;
+
+    // Check if domain is whitelisted
+    const whitelistService = services.get(DomainWhitelistService);
+    const isWhitelisted = await whitelistService.isWhitelisted(domain);
+
+    if (isWhitelisted) {
+      return {
+        level: 'low',
+        reason: `Domain "${domain}" is in the trusted whitelist`,
+        potentialImpact: 'Network request to a pre-approved trusted domain',
+        reversible: true,
+        categories: ['external_communication'],
+      };
+    }
+  } catch {
+    // URL parsing or whitelist check failed, use default risk
+  }
+
+  return defaultWebFetchRisk;
+};
+
+// ============================================================================
 // Tool Definition
 // ============================================================================
 
 /**
  * Web fetch tool - retrieves content from URLs.
+ * Uses dynamic risk evaluation based on domain whitelist.
  */
 const webFetchTool: ToolDefinition<WebFetchInput, WebFetchOutput> = {
   id: 'web.fetch',
   name: 'Fetch Web Page',
   description:
-    'Fetches content from a URL. In article mode (default), extracts the page title, converts HTML to markdown, and extracts all links. In raw mode, returns the raw HTML. Includes SSRF protection to block requests to private/internal addresses.',
+    'Fetches content from a URL. In article mode (default), extracts the page title, converts HTML to markdown, and extracts all links. In raw mode, returns the raw HTML. Includes SSRF protection to block requests to private/internal addresses. Whitelisted domains are low-risk; non-whitelisted domains require approval.',
   category: 'web',
   inputSchema: webFetchInputSchema,
   outputSchema: webFetchOutputSchema,
   risk: {
-    level: 'medium',
-    reason: 'Makes external HTTP requests to arbitrary URLs',
-    potentialImpact: 'Network requests to external services, potential information disclosure',
-    reversible: true,
-    categories: ['external_communication'],
-  },
+    evaluator: webFetchRiskEvaluator,
+    defaultProfile: defaultWebFetchRisk,
+  } as DynamicRiskProfile<WebFetchInput>,
   tags: ['web', 'http', 'fetch', 'scrape'],
   examples: [
     {

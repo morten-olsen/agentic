@@ -42,6 +42,39 @@ const riskProfileSchema = z.object({
 type RiskProfile = z.infer<typeof riskProfileSchema>;
 
 /**
+ * Dynamic risk evaluator function.
+ * Called at runtime to determine the risk level based on the actual input.
+ *
+ * @template TInput - The tool's input type
+ * @param input - The tool input being evaluated
+ * @param services - The services container for accessing dependencies
+ * @returns A promise resolving to the computed risk profile
+ */
+type DynamicRiskEvaluator<TInput = unknown> = (input: TInput, services: Services) => Promise<RiskProfile>;
+
+/**
+ * Dynamic risk profile with an evaluator function and fallback.
+ * The evaluator is called at runtime to compute the risk based on input.
+ * If evaluation fails, the defaultProfile is used as a fallback.
+ */
+type DynamicRiskProfile<TInput = unknown> = {
+  evaluator: DynamicRiskEvaluator<TInput>;
+  defaultProfile: RiskProfile;
+};
+
+/**
+ * Tool risk - either a static RiskProfile or a dynamic evaluator.
+ */
+type ToolRisk<TInput = unknown> = RiskProfile | DynamicRiskProfile<TInput>;
+
+/**
+ * Type guard to check if a tool risk is dynamic.
+ */
+const isDynamicRiskProfile = <TInput>(risk: ToolRisk<TInput>): risk is DynamicRiskProfile<TInput> => {
+  return risk !== null && typeof risk === 'object' && 'evaluator' in risk && typeof risk.evaluator === 'function';
+};
+
+/**
  * Tool execution context schema (for validation).
  * Note: services is not included in the schema but is added to the type.
  */
@@ -98,7 +131,17 @@ const toolDefinitionInputSchema = z.object({
 
 type ToolDefinitionInput = z.infer<typeof toolDefinitionInputSchema>;
 
-export type { RiskLevel, RiskCategory, RiskProfile, ToolContext, ToolResult, ToolDefinitionInput };
+export type {
+  RiskLevel,
+  RiskCategory,
+  RiskProfile,
+  DynamicRiskEvaluator,
+  DynamicRiskProfile,
+  ToolRisk,
+  ToolContext,
+  ToolResult,
+  ToolDefinitionInput,
+};
 
 export {
   riskLevelSchema,
@@ -107,4 +150,5 @@ export {
   toolContextSchema,
   toolResultSchema,
   toolDefinitionInputSchema,
+  isDynamicRiskProfile,
 };

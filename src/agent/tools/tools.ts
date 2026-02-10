@@ -308,7 +308,16 @@ class ToolRegistry {
 }
 
 // Re-export types and schemas
-export type { RiskLevel, RiskCategory, RiskProfile, ToolContext, ToolResult } from './tools.schemas.ts';
+export type {
+  RiskLevel,
+  RiskCategory,
+  RiskProfile,
+  DynamicRiskEvaluator,
+  DynamicRiskProfile,
+  ToolRisk,
+  ToolContext,
+  ToolResult,
+} from './tools.schemas.ts';
 export type { ToolDefinition, RegisteredTool, ToolExecutionOptions, ToolExecutionEvent } from './tools.types.ts';
 export {
   riskLevelSchema,
@@ -316,6 +325,7 @@ export {
   riskProfileSchema,
   toolContextSchema,
   toolResultSchema,
+  isDynamicRiskProfile,
 } from './tools.schemas.ts';
 export {
   ToolNotFoundError,

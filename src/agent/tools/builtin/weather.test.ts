@@ -117,8 +117,10 @@ describe('weatherTool', () => {
       expect(weatherTool.id).toBe('weather.get');
       expect(weatherTool.name).toBe('Get Weather');
       expect(weatherTool.category).toBe('weather');
-      expect(weatherTool.risk.level).toBe('low');
-      expect(weatherTool.risk.categories).toContain('external_communication');
+      // Weather tool uses static risk profile
+      const risk = weatherTool.risk as { level: string; categories: string[] };
+      expect(risk.level).toBe('low');
+      expect(risk.categories).toContain('external_communication');
     });
 
     it('has examples', () => {

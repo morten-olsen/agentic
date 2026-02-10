@@ -4,6 +4,7 @@ import type { ChatOpenAI } from '@langchain/openai';
 import type { DynamicStructuredTool } from '@langchain/core/tools';
 import { AIMessage } from '@langchain/core/messages';
 
+import type { Services } from '../../core/services/services.ts';
 import type { ToolRegistry, RiskLevel } from '../../agent/tools/tools.ts';
 import type { MemoryService } from '../../agent/memory/memory.ts';
 import type { SkillRegistry } from '../../agent/skills/skills.ts';
@@ -268,7 +269,7 @@ const createOrchestratorGraph = (
   approvalLevels?: RiskLevel[],
   memoryService?: MemoryService,
   skillRegistry?: SkillRegistry,
-  services?: unknown,
+  services?: Services,
 ) => {
   // Create the filtered tool node
   const toolNode = createFilteredToolNode(tools);
@@ -281,7 +282,7 @@ const createOrchestratorGraph = (
 
   // Create the risk gate node (if tool lookup provided)
   const riskGateNode = toolLookup
-    ? createRiskGateNode(toolLookup, approvalLevels ?? DEFAULT_APPROVAL_LEVELS, skillRegistry)
+    ? createRiskGateNode(toolLookup, services, approvalLevels ?? DEFAULT_APPROVAL_LEVELS, skillRegistry)
     : async () => ({ approvedToolCalls: [], interruptRequired: false });
 
   // Create the memory retriever node (with optional MemoryService)

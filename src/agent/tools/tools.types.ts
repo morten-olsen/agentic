@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-import type { RiskProfile, ToolContext } from './tools.schemas.ts';
+import type { ToolRisk, ToolContext } from './tools.schemas.ts';
 
 /**
  * A tool definition with strongly typed input/output.
@@ -25,8 +25,8 @@ type ToolDefinition<TInput = unknown, TOutput = unknown, TRawInput = TInput> = {
   inputSchema: z.ZodSchema<TInput>;
   /** Zod schema for validating output */
   outputSchema: z.ZodSchema<TOutput>;
-  /** Risk profile for this tool */
-  risk: RiskProfile;
+  /** Risk profile for this tool - static or dynamic */
+  risk: ToolRisk<TInput>;
   /** Function to execute the tool */
   execute: (input: TInput, context: ToolContext) => Promise<TOutput>;
   /** Tags for discovery and filtering */

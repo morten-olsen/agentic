@@ -79,7 +79,11 @@ type MyToolOutput = z.infer<typeof myToolOutputSchema>;
 
 ### 3. Define the Risk Profile
 
-Every tool needs a risk assessment:
+Every tool needs a risk assessment. Risk can be either **static** (fixed) or **dynamic** (evaluated at runtime based on input).
+
+#### Static Risk (Default)
+
+For most tools, use a static risk profile:
 
 ```typescript
 risk: {
@@ -89,6 +93,71 @@ risk: {
   reversible: true,
   categories: [],        // Risk categories (see below)
 }
+```
+
+#### Dynamic Risk
+
+For tools where risk depends on input (e.g., different URLs, different operations), use a dynamic risk profile with an async evaluator function:
+
+```typescript
+import type { RiskProfile, DynamicRiskProfile } from '../tools.schemas.ts';
+import type { Services } from '../../core/services/services.ts';
+
+// Default risk if evaluation fails or conditions aren't met
+const defaultRisk: RiskProfile = {
+  level: 'medium',
+  reason: 'Makes external HTTP requests',
+  potentialImpact: 'May access sensitive URLs',
+  reversible: true,
+  categories: ['external_api'],
+};
+
+// Dynamic evaluator receives input and services
+const myToolRiskEvaluator = async (
+  input: MyToolInput,
+  services: Services,
+): Promise<RiskProfile> => {
+  // Example: check if URL is in a trusted whitelist
+  const whitelistService = services.get(DomainWhitelistService);
+  const isWhitelisted = await whitelistService.isWhitelisted(input.url);
+
+  if (isWhitelisted) {
+    return {
+      level: 'low',
+      reason: 'URL is in trusted whitelist',
+      potentialImpact: 'None - trusted source',
+      reversible: true,
+      categories: [],
+    };
+  }
+
+  return defaultRisk;
+};
+
+// Use dynamic risk profile in tool definition
+const myTool: ToolDefinition<MyToolInput, MyToolOutput> = {
+  // ... other fields ...
+  risk: {
+    evaluator: myToolRiskEvaluator,
+    defaultProfile: defaultRisk,  // Fallback if evaluation fails
+  } as DynamicRiskProfile<MyToolInput>,
+};
+```
+
+**When to use dynamic risk:**
+
+- External API calls where some domains are trusted
+- File operations where some paths are safe
+- Operations with different modes (read vs write)
+- Any case where the risk depends on the specific input values
+
+**Dynamic risk profile structure:**
+
+```typescript
+type DynamicRiskProfile<TInput> = {
+  evaluator: (input: TInput, services: Services) => Promise<RiskProfile>;
+  defaultProfile: RiskProfile;  // Used if evaluator throws or services unavailable
+};
 ```
 
 **Risk Levels:**

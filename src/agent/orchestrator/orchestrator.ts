@@ -20,6 +20,7 @@ import { generateAvailableSkillsContext } from '../../agent/skills/skills.contex
 import { ExternalServiceRegistry } from '../../integrations/external/external.ts';
 import { generateDeltaInstructions } from '../../agent/personality/personality.prompts.ts';
 import { registerExternalServices, registerExternalServiceTools } from '../../integrations/external/external.tools.ts';
+import { DomainWhitelistService } from '../../features/risk-policies/risk-policies.ts';
 
 import { collectTools } from './orchestrator.tool-collector.ts';
 import type { ResumeStrategy } from './orchestrator.resume.ts';
@@ -106,6 +107,9 @@ class OrchestratorService {
 
     // Register with Services container so ContextBuilderService can access it
     this.#services.set(ExternalServiceRegistry, this.#externalServiceRegistry);
+
+    // Initialize domain whitelist service for dynamic risk evaluation
+    this.#services.set(DomainWhitelistService, new DomainWhitelistService(this.#services));
 
     // Initialize skill registry and register builtin skills
     this.#skillRegistry = new SkillRegistry();

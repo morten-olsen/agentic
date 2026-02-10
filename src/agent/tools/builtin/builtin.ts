@@ -16,6 +16,7 @@ import { registerSkillTools } from './skills.ts';
 import { registerArtifactTools } from './artifacts.ts';
 import { registerEventTools } from './events.ts';
 import { weatherTool } from './weather.ts';
+import { registerDomainWhitelistTools } from './domain-whitelist.ts';
 
 /**
  * Registers all builtin tools with the registry.
@@ -40,6 +41,7 @@ const registerBuiltinTools = (registry: ToolRegistry): void => {
   registerSkillTools(registry);
   registerArtifactTools(registry);
   registerEventTools(registry);
+  registerDomainWhitelistTools(registry);
 };
 
 // Re-export individual tools for direct access
@@ -82,5 +84,15 @@ export type {
 
 export { weatherTool } from './weather.ts';
 export type { WeatherInput, WeatherOutput, LocationInfo, CurrentConditions, DailyForecast } from './weather.ts';
+
+export { registerDomainWhitelistTools } from './domain-whitelist.ts';
+export type {
+  WhitelistDomainInput,
+  WhitelistDomainOutput,
+  RemoveWhitelistedDomainInput,
+  RemoveWhitelistedDomainOutput,
+  ListWhitelistedDomainsInput,
+  ListWhitelistedDomainsOutput,
+} from './domain-whitelist.ts';
 
 export { registerBuiltinTools };

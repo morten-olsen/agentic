@@ -446,21 +446,21 @@ describe('evaluateRiskGate', () => {
     registry = new ToolRegistry(services);
   });
 
-  it('allows low-risk tools to pass through', () => {
+  it('allows low-risk tools to pass through', async () => {
     // Note: In LangChain, tool call name = tool id (not display name)
     registry.register(createToolWithRisk('low-1', 'LowRiskTool', 'low'));
 
-    const result = evaluateRiskGate([{ id: 'call-1', name: 'low-1', args: { value: 'test' } }], registry);
+    const result = await evaluateRiskGate([{ id: 'call-1', name: 'low-1', args: { value: 'test' } }], registry);
 
     expect(result.approvedToolCalls).toHaveLength(1);
     expect(result.pendingToolCall).toBeNull();
     expect(result.interruptRequired).toBe(false);
   });
 
-  it('requires approval for medium-risk tools', () => {
+  it('requires approval for medium-risk tools', async () => {
     registry.register(createToolWithRisk('med-1', 'MediumRiskTool', 'medium'));
 
-    const result = evaluateRiskGate([{ id: 'call-1', name: 'med-1', args: { value: 'test' } }], registry);
+    const result = await evaluateRiskGate([{ id: 'call-1', name: 'med-1', args: { value: 'test' } }], registry);
 
     expect(result.approvedToolCalls).toHaveLength(0);
     expect(result.pendingToolCall).not.toBeNull();
@@ -468,29 +468,29 @@ describe('evaluateRiskGate', () => {
     expect(result.interruptRequired).toBe(true);
   });
 
-  it('requires approval for high-risk tools', () => {
+  it('requires approval for high-risk tools', async () => {
     registry.register(createToolWithRisk('high-1', 'HighRiskTool', 'high'));
 
-    const result = evaluateRiskGate([{ id: 'call-1', name: 'high-1', args: { value: 'test' } }], registry);
+    const result = await evaluateRiskGate([{ id: 'call-1', name: 'high-1', args: { value: 'test' } }], registry);
 
     expect(result.pendingToolCall?.riskLevel).toBe('high');
     expect(result.interruptRequired).toBe(true);
   });
 
-  it('requires approval for critical-risk tools', () => {
+  it('requires approval for critical-risk tools', async () => {
     registry.register(createToolWithRisk('crit-1', 'CriticalTool', 'critical'));
 
-    const result = evaluateRiskGate([{ id: 'call-1', name: 'crit-1', args: { value: 'test' } }], registry);
+    const result = await evaluateRiskGate([{ id: 'call-1', name: 'crit-1', args: { value: 'test' } }], registry);
 
     expect(result.pendingToolCall?.riskLevel).toBe('critical');
     expect(result.interruptRequired).toBe(true);
   });
 
-  it('handles mixed risk levels', () => {
+  it('handles mixed risk levels', async () => {
     registry.register(createToolWithRisk('low-1', 'LowRiskTool', 'low'));
     registry.register(createToolWithRisk('high-1', 'HighRiskTool', 'high'));
 
-    const result = evaluateRiskGate(
+    const result = await evaluateRiskGate(
       [
         { id: 'call-1', name: 'low-1', args: { value: 'test' } },
         { id: 'call-2', name: 'high-1', args: { value: 'test' } },
@@ -504,19 +504,19 @@ describe('evaluateRiskGate', () => {
     expect(result.interruptRequired).toBe(true);
   });
 
-  it('treats unknown tools as high risk', () => {
-    const result = evaluateRiskGate([{ id: 'call-1', name: 'UnknownTool', args: { value: 'test' } }], registry);
+  it('treats unknown tools as high risk', async () => {
+    const result = await evaluateRiskGate([{ id: 'call-1', name: 'UnknownTool', args: { value: 'test' } }], registry);
 
     expect(result.pendingToolCall?.name).toBe('UnknownTool');
     expect(result.pendingToolCall?.riskLevel).toBe('high');
     expect(result.interruptRequired).toBe(true);
   });
 
-  it('only flags the first high-risk tool', () => {
+  it('only flags the first high-risk tool', async () => {
     registry.register(createToolWithRisk('high-1', 'HighRisk1', 'high'));
     registry.register(createToolWithRisk('high-2', 'HighRisk2', 'high'));
 
-    const result = evaluateRiskGate(
+    const result = await evaluateRiskGate(
       [
         { id: 'call-1', name: 'high-1', args: { value: 'test' } },
         { id: 'call-2', name: 'high-2', args: { value: 'test' } },
@@ -530,14 +530,16 @@ describe('evaluateRiskGate', () => {
     expect(result.approvedToolCalls).toHaveLength(0);
   });
 
-  it('respects custom approval levels', () => {
+  it('respects custom approval levels', async () => {
     registry.register(createToolWithRisk('med-1', 'MediumRiskTool', 'medium'));
 
-    // Only require approval for high and critical
-    const result = evaluateRiskGate([{ id: 'call-1', name: 'med-1', args: { value: 'test' } }], registry, [
-      'high',
-      'critical',
-    ]);
+    // Only require approval for high and critical (pass undefined for services)
+    const result = await evaluateRiskGate(
+      [{ id: 'call-1', name: 'med-1', args: { value: 'test' } }],
+      registry,
+      undefined,
+      ['high', 'critical'],
+    );
 
     // Medium should pass through with this config
     expect(result.approvedToolCalls).toHaveLength(1);

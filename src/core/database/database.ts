@@ -31,6 +31,7 @@ import * as migration021 from './migrations/021_create_logs.ts';
 import * as migration022 from './migrations/022_calendar_sync.ts';
 import * as migration023 from './migrations/023_events.ts';
 import * as migration024 from './migrations/024_health_tracking.ts';
+import * as migration025 from './migrations/025_domain_whitelist.ts';
 
 type MigrationSource = {
   getMigrations: () => Promise<string[]>;
@@ -63,6 +64,7 @@ const createMigrationSource = (): MigrationSource => {
     '022_calendar_sync': migration022,
     '023_events': migration023,
     '024_health_tracking': migration024,
+    '025_domain_whitelist': migration025,
   };
 
   return {

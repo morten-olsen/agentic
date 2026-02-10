@@ -271,8 +271,10 @@ describe('webFetchTool', () => {
       expect(webFetchTool.id).toBe('web.fetch');
       expect(webFetchTool.name).toBe('Fetch Web Page');
       expect(webFetchTool.category).toBe('web');
-      expect(webFetchTool.risk.level).toBe('medium');
-      expect(webFetchTool.risk.categories).toContain('external_communication');
+      // web.fetch uses dynamic risk - check the defaultProfile
+      const risk = webFetchTool.risk as { defaultProfile: { level: string; categories: string[] } };
+      expect(risk.defaultProfile.level).toBe('medium');
+      expect(risk.defaultProfile.categories).toContain('external_communication');
     });
   });
 

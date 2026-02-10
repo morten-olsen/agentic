@@ -1,6 +1,15 @@
 import type { AIMessage } from '@langchain/core/messages';
 
-import type { ToolRegistry, RiskLevel, ToolDefinition, RegisteredTool } from '../../agent/tools/tools.ts';
+import type { Services } from '../../core/services/services.ts';
+import type {
+  ToolRegistry,
+  RiskLevel,
+  RiskProfile,
+  ToolRisk,
+  ToolDefinition,
+  RegisteredTool,
+} from '../../agent/tools/tools.ts';
+import { isDynamicRiskProfile } from '../../agent/tools/tools.ts';
 import type { SkillRegistry } from '../../agent/skills/skills.ts';
 
 import type { OrchestratorState } from './orchestrator.state.ts';
@@ -47,22 +56,59 @@ type RiskGateResult = {
 const DEFAULT_APPROVAL_LEVELS: RiskLevel[] = ['medium', 'high', 'critical'];
 
 /**
+ * Resolves a tool's risk profile, handling both static and dynamic risk.
+ *
+ * For static risk profiles, returns the profile directly.
+ * For dynamic risk profiles, calls the evaluator with the input and services.
+ * If evaluation fails, falls back to the defaultProfile.
+ *
+ * @param risk - The tool's risk (static or dynamic)
+ * @param input - The tool input being evaluated
+ * @param services - The services container (required for dynamic evaluation)
+ * @returns The resolved risk profile
+ */
+const resolveRiskProfile = async <TInput>(
+  risk: ToolRisk<TInput>,
+  input: TInput,
+  services?: Services,
+): Promise<RiskProfile> => {
+  if (isDynamicRiskProfile(risk)) {
+    if (!services) {
+      // No services available, use default profile
+      return risk.defaultProfile;
+    }
+    try {
+      return await risk.evaluator(input, services);
+    } catch (error) {
+      // Log error and fall back to default
+      console.error('Dynamic risk evaluation failed:', error);
+      return risk.defaultProfile;
+    }
+  }
+  return risk;
+};
+
+/**
  * Evaluates tool calls against the risk gate.
  *
  * Returns which tool calls can proceed and which require approval.
  * Only the first high-risk tool call is returned as pending - subsequent
  * ones will be evaluated after the first is approved/denied.
  *
+ * @param toolCalls - The tool calls to evaluate
  * @param toolLookup - Tool lookup (can be ToolRegistry or ToolLookup from collectTools)
+ * @param services - Optional services container for dynamic risk evaluation
+ * @param approvalLevels - Risk levels that require approval
  * @param skillRegistry - Optional skill registry to provide better error messages
  *                        for tools belonging to inactive skills
  */
-const evaluateRiskGate = (
+const evaluateRiskGate = async (
   toolCalls: { id?: string; name: string; args: Record<string, unknown> }[],
   toolLookup: ToolRegistry | ToolLookup,
+  services?: Services,
   approvalLevels: RiskLevel[] = DEFAULT_APPROVAL_LEVELS,
   skillRegistry?: SkillRegistry,
-): RiskGateResult => {
+): Promise<RiskGateResult> => {
   const approved: RiskGateResult['approvedToolCalls'] = [];
   let pending: PendingToolCall | null = null;
 
@@ -132,7 +178,9 @@ const evaluateRiskGate = (
       continue;
     }
 
-    const riskLevel = tool.risk.level;
+    // Resolve risk profile (handles both static and dynamic risk)
+    const riskProfile = await resolveRiskProfile(tool.risk, toolCall.args, services);
+    const riskLevel = riskProfile.level;
 
     if (approvalLevels.includes(riskLevel)) {
       // This tool requires approval
@@ -142,7 +190,7 @@ const evaluateRiskGate = (
           name: toolCall.name,
           args: toolCall.args,
           riskLevel,
-          riskReason: tool.risk.reason,
+          riskReason: riskProfile.reason,
         };
       }
       // Don't add to approved - will be re-evaluated after first pending is resolved
@@ -171,9 +219,13 @@ const evaluateRiskGate = (
  * while higher-risk tools trigger an interrupt for user approval.
  *
  * @param toolLookup - Tool lookup (can be ToolRegistry or ToolLookup from collectTools)
+ * @param services - Services container for dynamic risk evaluation
+ * @param approvalLevels - Risk levels that require approval
+ * @param skillRegistry - Optional skill registry for error messages
  */
 const createRiskGateNode = (
   toolLookup: ToolRegistry | ToolLookup,
+  services?: Services,
   approvalLevels: RiskLevel[] = DEFAULT_APPROVAL_LEVELS,
   skillRegistry?: SkillRegistry,
 ) => {
@@ -212,8 +264,8 @@ const createRiskGateNode = (
     // This prevents re-prompting for tools the user already approved
     const toolsToEvaluate = toolCalls.filter((tc) => !approvedNames.has(tc.name));
 
-    // Evaluate only the non-approved tool calls
-    const result = evaluateRiskGate(toolsToEvaluate, toolLookup, approvalLevels, skillRegistry);
+    // Evaluate only the non-approved tool calls (now async for dynamic risk)
+    const result = await evaluateRiskGate(toolsToEvaluate, toolLookup, services, approvalLevels, skillRegistry);
 
     // Merge with any existing approved calls
     const mergedApproved = [...existingApproved];
