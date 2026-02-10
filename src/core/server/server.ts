@@ -33,6 +33,9 @@ import { TaskService } from '../../features/tasks/tasks.ts';
 import { HealthService } from '../../integrations/health/health.ts';
 import { NotificationRouter } from '../../features/notifications/notifications.ts';
 import { TelegramClientService } from '../../integrations/clients/telegram/telegram.ts';
+import { OrchestratorService } from '../../agent/orchestrator/orchestrator.ts';
+import { MemoryService } from '../../agent/memory/memory.ts';
+import { ContactsService } from '../../domain/contacts/contacts.ts';
 import { loadConfig, isTelegramConfigured, isLLMConfigured, isApiConfigured } from '../../core/config/config.ts';
 import { createApiServer, startApiServer, setupOuraWebhooks } from '../../integrations/api/api.ts';
 
@@ -101,10 +104,26 @@ const main = async (): Promise<void> => {
     components.services.get(UserModelService);
     components.services.get(LocationService);
     components.services.get(CalendarService);
+    components.services.get(ContactsService);
     components.services.get(ContextBuilderService);
     components.services.get(PersonalityService);
+    components.services.get(MemoryService);
     components.services.get(TaskService);
     components.services.get(HealthService);
+
+    // Create and configure orchestrator (needed by API server)
+    console.log('Configuring orchestrator...');
+    const orchestrator = new OrchestratorService(components.services);
+    components.services.set(OrchestratorService, orchestrator);
+    orchestrator.configure({
+      llm: {
+        baseUrl: config.llm.baseUrl,
+        apiKey: config.llm.apiKey,
+        model: config.llm.model,
+        temperature: config.llm.temperature,
+        maxTokens: config.llm.maxTokens,
+      },
+    });
 
     // Create notification router
     components.notificationRouter = new NotificationRouter(components.services);

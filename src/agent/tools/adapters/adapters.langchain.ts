@@ -1,5 +1,5 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { toJSONSchema, type ZodType } from 'zod';
 
 import type { RegisteredTool, ToolContext, ToolRegistry } from '../tools.ts';
 
@@ -65,9 +65,7 @@ const toLangChainToolsByTag = (registry: ToolRegistry, context: ToolContext, tag
  * Useful for documentation or API endpoints.
  */
 const getToolJsonSchema = (tool: RegisteredTool): object => {
-  // Type assertion needed for Zod 4 compatibility with zod-to-json-schema
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return zodToJsonSchema(tool.inputSchema as any);
+  return toJSONSchema(tool.inputSchema as ZodType);
 };
 
 export {

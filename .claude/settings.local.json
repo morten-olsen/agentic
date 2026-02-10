@@ -67,7 +67,11 @@
       "Bash(timeout 3 pnpm cli:*)",
       "Bash(while read line)",
       "Bash(do echo \"$line\")",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(npm search:*)",
+      "Bash(pnpm search:*)",
+      "Bash(pnpm info:*)",
+      "Bash(pnpm remove:*)"
     ]
   }
 }

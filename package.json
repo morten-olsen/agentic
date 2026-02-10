@@ -45,23 +45,26 @@
   "name": "@morten-olsen/glados",
   "version": "1.0.0",
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/swagger": "^9.7.0",
     "@huggingface/transformers": "^3.8.1",
-    "fastify": "^5.2.1",
     "@langchain/core": "^1.1.18",
     "@langchain/langgraph": "^1.1.2",
     "@langchain/langgraph-checkpoint": "^1.0.0",
     "@langchain/openai": "^1.2.4",
+    "@scalar/fastify-api-reference": "^1.44.15",
     "better-sqlite3": "^12.6.2",
     "chrono-node": "^2.9.0",
     "convict": "^6.2.4",
+    "fastify": "^5.2.1",
+    "fastify-type-provider-zod": "^6.1.0",
     "grammy": "^1.21.1",
     "home-assistant-js-websocket": "^9.6.0",
     "knex": "^3.1.0",
     "langchain": "^1.2.16",
     "sqlite-vec": "0.1.7-alpha.2",
     "uuid": "^13.0.0",
-    "zod": "^4.3.6",
-    "zod-to-json-schema": "^3.25.1"
+    "zod": "^4.3.6"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

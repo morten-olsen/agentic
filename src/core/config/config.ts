@@ -310,6 +310,24 @@ const configSchema = convict({
       default: '',
       env: 'GLADOS_API_PUBLIC_URL',
     },
+    docsEnabled: {
+      doc: 'Enable API documentation endpoint (/docs)',
+      format: Boolean,
+      default: true,
+      env: 'GLADOS_API_DOCS_ENABLED',
+    },
+    toolsEnabled: {
+      doc: 'Enable tool execution endpoints (/api/v1/tools)',
+      format: Boolean,
+      default: true,
+      env: 'GLADOS_API_TOOLS_ENABLED',
+    },
+    corsOrigins: {
+      doc: 'CORS allowed origins (comma-separated, or * for all)',
+      format: String,
+      default: '*',
+      env: 'GLADOS_API_CORS_ORIGINS',
+    },
   },
 
   oura: {
@@ -407,6 +425,9 @@ type Config = {
     port: number;
     trustProxy: boolean;
     publicUrl: string;
+    docsEnabled: boolean;
+    toolsEnabled: boolean;
+    corsOrigins: string;
   };
   oura: {
     clientId: string;
