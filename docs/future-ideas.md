@@ -518,12 +518,217 @@ Optional financial tracking:
 
 ---
 
-## 7. Health & Wellness Tracking
+## 7. Conversation Continuity
+
+**Status:** Proposed
+**Effort:** High
+**Impact:** Very High
+**Leverage:** Transforms fragmented sessions into unified relationship
+
+### Description
+
+Create the experience of talking to one agent in one continuous conversation, while behind the scenes managing context windows through automatic segmentation, reflection, and context rebuilding.
+
+**Problem:** LLMs have limited context windows, forcing users to manage multiple conversations. Users shouldn't have to think about "starting a new conversation" or worry about losing context from previous discussions.
+
+**Solution:** The user maintains one "infinite" conversation. The system automatically:
+- Segments conversations at natural topic boundaries
+- Reflects on completed segments (extracts memories, generates summaries)
+- Rebuilds context on-demand when user references past discussions
+- Compacts the active segment when it grows too large
+
+### User Experience
+
+From the user's perspective:
+- Talk to GLaDOS forever in one conversation
+- Reference past discussions naturally ("remember when we discussed X?")
+- Never worry about context limits or conversation management
+- Agent maintains continuity across all interactions
+
+### System Architecture
+
+```
+User's View:
+┌─────────────────────────────────┐
+│     One Continuous Chat         │
+│  "Hey GLaDOS..." → forever      │
+└─────────────────────────────────┘
+
+System's View:
+┌──────────────────────────────────────────────────┐
+│ Active Segment (current context window)          │
+│ ├── Recent messages (verbatim)                   │
+│ └── Compacted prefix (summaries if too long)     │
+├──────────────────────────────────────────────────┤
+│ Reflected Segments (searchable archive)          │
+│ ├── Segment A: "API refactor discussion"         │
+│ ├── Segment B: "Vacation planning"               │
+│ └── Segment C: "Bug in auth module"              │
+└──────────────────────────────────────────────────┘
+```
+
+### Core Flows
+
+#### 1. Segmentation Flow (periodic)
+
+Analyzes the active conversation and identifies natural topic boundaries for splitting.
+
+**Triggers:**
+- Periodic (e.g., hourly)
+- When user explicitly creates a new conversation (reflects the old one)
+- When context pressure requires it
+
+**Segmentation signals:**
+- Semantic shift (message embeddings diverge significantly)
+- Time gaps (user returns after several hours)
+- Task completion markers
+- Explicit signals ("anyway, about something else...")
+
+**Process:**
+1. Analyze active conversation for topic boundaries
+2. Split at natural breakpoints
+3. Send completed segments to reflection
+4. Keep most recent segment as active
+
+#### 2. Reflection Flow (on segment completion)
+
+Processes completed segments to extract durable value.
+
+**Process:**
+1. Generate segment summary (topic, key decisions, outcomes)
+2. Extract memories → feed into Memory system
+3. Identify action items or follow-ups
+4. Store full transcript (searchable)
+5. Mark segment as reflected
+
+**Segment Record:**
+```typescript
+type ReflectedSegment = {
+  id: string;
+  timestamp: { start: Date; end: Date };
+
+  // Content
+  transcript: Message[];           // Full conversation
+  summary: string;                 // LLM-generated summary
+  topics: string[];                // Identified topics
+
+  // Extracted value
+  memoriesCreated: string[];       // IDs of memories extracted
+  actionItems: string[];           // Follow-ups identified
+
+  // Search optimization
+  embedding: number[];             // For semantic search
+
+  metadata: {
+    messageCount: number;
+    tokenCount: number;
+    reflectedAt: Date;
+  };
+};
+```
+
+#### 3. Compaction Flow (context pressure)
+
+When the active segment approaches token limits, compact older parts while preserving recent context.
+
+**Strategy: Rolling Window**
+- Keep last N tokens of messages verbatim
+- Summarize everything before the window in chunks
+- As conversation grows, window slides forward
+- Full transcript remains searchable for detail recovery
+
+**Process:**
+1. Detect context pressure (approaching token limit)
+2. Identify compaction boundary (preserve recent N tokens)
+3. Generate summary of messages before boundary
+4. Replace detailed messages with summary
+5. Store full messages in searchable archive
+
+```typescript
+type CompactedConversation = {
+  // What's in the context window
+  compactedPrefix: {
+    summary: string;               // "Earlier, we discussed X, decided Y..."
+    tokenCount: number;            // How much this summary represents
+    messageRange: [number, number]; // Original message indices
+  }[];
+
+  recentMessages: Message[];       // Verbatim recent messages
+
+  // Full history (searchable, not in context)
+  fullTranscript: Message[];
+};
+```
+
+#### 4. Context Rebuilding Flow (on-demand)
+
+When user references past discussions, rebuild relevant context.
+
+**Trigger:** User references something not in current context
+- "Remember when we talked about the API refactor?"
+- "What did we decide about the deployment strategy?"
+- "You mentioned something about Alice last week..."
+
+**Strategy: Hierarchical Search**
+1. Search segment summaries first (fast, gives overview)
+2. If more detail needed, search within relevant transcripts
+3. Load specific relevant exchanges into context
+4. Provide agent with recovered context
+
+**Tool Interface:**
+```typescript
+// Tool available to the agent
+const recallConversation = {
+  name: 'recallConversation',
+  description: 'Search past conversations for context',
+  input: z.object({
+    query: z.string().describe('What to search for'),
+    maxSegments: z.number().default(3),
+    includeTranscript: z.boolean().default(false),
+  }),
+  output: z.object({
+    segments: z.array(z.object({
+      id: z.string(),
+      summary: z.string(),
+      relevanceScore: z.number(),
+      timestamp: z.date(),
+      transcript: z.array(MessageSchema).optional(),
+    })),
+  }),
+};
+```
+
+### Why It Matters
+
+This is the difference between:
+- **Tool**: "Sorry, I don't have context from that conversation. Can you remind me?"
+- **Assistant**: "Yes, we discussed that last Tuesday. You decided to go with option B because of the timeline constraints."
+
+A true personal assistant remembers. Not just facts (that's Memory), but the flow of discussions, decisions made, context established. This feature bridges the gap between technical reality (limited context) and user expectation (continuous relationship).
+
+### Implementation Approach
+
+1. **Segment storage**: Extend conversation storage to support segments with summaries
+2. **Reflection trigger**: Add background job that processes unreflected segments
+3. **Segmentation logic**: Implement topic boundary detection (embeddings + heuristics)
+4. **Compaction**: Add rolling window compaction to orchestrator
+5. **Search tools**: Create `recallConversation` tool with hierarchical search
+6. **Integration**: Connect reflection output to Memory system
+
+### Relationship to Other Features
+
+- **Memory Evolution (#5)**: Reflection feeds the memory system with extracted facts
+- **Anticipatory Intelligence (#2)**: Past conversation context enables better anticipation
+- **Messaging Integration (#1)**: Cross-channel conversations could use same segmentation
+
+---
+
+## 8. Health & Wellness Tracking
 
 **Status:** Proposed
 **Effort:** Medium
 **Impact:** Medium
-**Leverage:** Integrates with anticipatory intelligence
+**Leverage:** Integrates with Anticipatory Intelligence and Conversation Continuity
 
 ### Description
 
@@ -546,12 +751,13 @@ Holistic wellness awareness:
 | Idea | Effort | Impact | Recommended Order |
 |------|--------|--------|-------------------|
 | Messaging Integration | Medium | Very High | 1 - Unified communication awareness |
-| Anticipatory Intelligence | Medium | High | 2 - Differentiator |
-| Research & Execution Skills | Medium | High | 3 - Parallel track |
-| Tool Builder Skill | High | Very High | 4 - Self-extending agent |
-| Memory Evolution | High | Very High | 5 - Long-term investment |
-| Health & Wellness | Medium | Medium | 6 - Nice to have |
-| Financial Awareness | High | Medium | 7 - Complex, sensitive |
+| Conversation Continuity | High | Very High | 2 - Foundation for continuous relationship |
+| Anticipatory Intelligence | Medium | High | 3 - Differentiator |
+| Research & Execution Skills | Medium | High | 4 - Parallel track |
+| Tool Builder Skill | High | Very High | 5 - Self-extending agent |
+| Memory Evolution | High | Very High | 6 - Long-term investment |
+| Health & Wellness | Medium | Medium | 7 - Nice to have |
+| Financial Awareness | High | Medium | 8 - Complex, sensitive |
 
 **Note:** Daily Briefings don't need a dedicated feature - they're just triggers with goals like "Summarize my calendar, tasks, and weather for today." The existing trigger system + tools (`getAgenda`, `listUserTasks`, `weather.get`, `notify`) already provide this capability with full user control over content.
 
