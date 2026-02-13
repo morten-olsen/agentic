@@ -211,7 +211,7 @@ class MemoryService {
     const allMemories: MemoryEntry[] = [];
 
     // Get memories of requested types, or all types if not specified
-    const types = options?.types ?? ['conversation', 'fact', 'preference', 'procedure', 'feedback', 'event', 'entity'];
+    const types = options?.types ?? ['conversation', 'fact', 'preference', 'procedure', 'event', 'entity'];
 
     for (const type of types) {
       const items = await this.#store.search([MEMORIES_NAMESPACE, type], {
@@ -270,7 +270,7 @@ class MemoryService {
    */
   get = async (id: string): Promise<MemoryEntry | null> => {
     // We need to search across all memory types to find by ID
-    const types: MemoryType[] = ['conversation', 'fact', 'preference', 'procedure', 'feedback', 'event', 'entity'];
+    const types: MemoryType[] = ['conversation', 'fact', 'preference', 'procedure', 'event', 'entity'];
 
     for (const type of types) {
       const item = await this.#store.get([MEMORIES_NAMESPACE, type], id);
@@ -387,7 +387,7 @@ class MemoryService {
    * Lists memories with optional filtering.
    */
   list = async (options?: RecallOptions): Promise<MemoryEntry[]> => {
-    const types = options?.types ?? ['conversation', 'fact', 'preference', 'procedure', 'feedback', 'event', 'entity'];
+    const types = options?.types ?? ['conversation', 'fact', 'preference', 'procedure', 'event', 'entity'];
     const limit = options?.limit ?? this.#config.recallLimit;
     const minImportance = options?.minImportance ?? 0;
 

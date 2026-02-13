@@ -6,12 +6,14 @@ import { UserModelService } from '../../domain/user-model/user-model.ts';
 import { LocationService } from '../../domain/location/location.ts';
 import { CalendarService } from '../../domain/calendar/calendar.ts';
 import { TaskService } from '../../features/tasks/tasks.ts';
+import { DayPlanService } from '../../features/day-planner/day-planner.ts';
 import { ExternalServiceRegistry } from '../../integrations/external/external.ts';
 import type {
   HomeAssistantClient,
   HaCalendarEvent,
   HaPersonState,
 } from '../../integrations/external/homeassistant/index.ts';
+import { BehavioralMemoryService, BehavioralEmbeddingProvider } from '../../agent/behavioral/behavioral.ts';
 
 import { ContextBuilderService } from './context.ts';
 
@@ -969,6 +971,130 @@ describe('ContextBuilderService', () => {
         now: new Date(now.getTime() + 1000),
       });
       expect(result.delta).toBeNull();
+    });
+  });
+
+  describe('Behavioral Context Summary', () => {
+    let mockEmbedQuery: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      // Mock the embedding provider so behavioral service doesn't make real API calls
+      mockEmbedQuery = vi.fn().mockResolvedValue(Array.from({ length: 1536 }, () => 0.01));
+      const mockProvider = {
+        embedQuery: mockEmbedQuery,
+        dimensions: 1536,
+      } as unknown as BehavioralEmbeddingProvider;
+      services.set(BehavioralEmbeddingProvider, mockProvider);
+    });
+
+    it('includes project names in behavioral context summary', async () => {
+      await userModel.createIdentity({ name: 'Alice' });
+      await userModel.createProject({ name: 'Project Alpha', status: 'active' });
+      await userModel.createProject({ name: 'Project Beta', status: 'active' });
+
+      // Create a template so buildContextIndex generates meaningful output
+      const behavioralService = services.get(BehavioralMemoryService);
+      await behavioralService.createTemplate({
+        situation: { description: 'Test situation', category: 'test', triggerPatterns: ['test'] },
+        strategy: { approach: 'Test approach', guidelines: ['guideline'] },
+      });
+
+      await contextBuilder.buildContext({ now: new Date('2024-01-15T10:00:00.000Z') });
+
+      // The embedding query should have been called with project names
+      const embedCalls = mockEmbedQuery.mock.calls;
+      // First call is for template creation, second is for context index
+      const contextCall = embedCalls.find(
+        (call: string[]) => call[0].includes('Project Alpha') && call[0].includes('Project Beta'),
+      );
+      expect(contextCall).toBeDefined();
+    });
+
+    it('includes goal descriptions in behavioral context summary', async () => {
+      await userModel.createIdentity({ name: 'Alice' });
+      await userModel.createGoal({ description: 'Learn Rust programming', timeframe: 'short' });
+
+      const behavioralService = services.get(BehavioralMemoryService);
+      await behavioralService.createTemplate({
+        situation: { description: 'Test situation', category: 'test', triggerPatterns: ['test'] },
+        strategy: { approach: 'Test approach', guidelines: ['guideline'] },
+      });
+
+      await contextBuilder.buildContext({ now: new Date('2024-01-15T10:00:00.000Z') });
+
+      const embedCalls = mockEmbedQuery.mock.calls;
+      const contextCall = embedCalls.find((call: string[]) => call[0].includes('Learn Rust programming'));
+      expect(contextCall).toBeDefined();
+    });
+
+    it('includes time of day in behavioral context summary', async () => {
+      await userModel.createIdentity({ name: 'Alice' });
+
+      const behavioralService = services.get(BehavioralMemoryService);
+      await behavioralService.createTemplate({
+        situation: { description: 'Test situation', category: 'test', triggerPatterns: ['test'] },
+        strategy: { approach: 'Test approach', guidelines: ['guideline'] },
+      });
+
+      await contextBuilder.buildContext({ now: new Date('2024-01-15T08:00:00.000Z') });
+
+      const embedCalls = mockEmbedQuery.mock.calls;
+      const contextCall = embedCalls.find((call: string[]) => call[0].includes('morning'));
+      expect(contextCall).toBeDefined();
+    });
+
+    it('includes day plan priorities in behavioral context summary', async () => {
+      await userModel.createIdentity({ name: 'Alice' });
+
+      const dayPlanService = services.get(DayPlanService);
+      const plan = await dayPlanService.createPlan({ intentions: ['Focus on coding'] });
+      await dayPlanService.addPriority(plan.id, {
+        description: 'Finish API migration',
+        category: 'work',
+      });
+
+      const behavioralService = services.get(BehavioralMemoryService);
+      await behavioralService.createTemplate({
+        situation: { description: 'Test situation', category: 'test', triggerPatterns: ['test'] },
+        strategy: { approach: 'Test approach', guidelines: ['guideline'] },
+      });
+
+      await contextBuilder.buildContext({ now: new Date('2024-01-15T10:00:00.000Z') });
+
+      const embedCalls = mockEmbedQuery.mock.calls;
+      const contextCall = embedCalls.find((call: string[]) => call[0].includes('Finish API migration'));
+      expect(contextCall).toBeDefined();
+    });
+
+    it('falls back to general context when no data available', async () => {
+      const behavioralService = services.get(BehavioralMemoryService);
+      await behavioralService.createTemplate({
+        situation: { description: 'Test situation', category: 'test', triggerPatterns: ['test'] },
+        strategy: { approach: 'Test approach', guidelines: ['guideline'] },
+      });
+
+      await contextBuilder.buildContext({ now: new Date('2024-01-15T10:00:00.000Z') });
+
+      const embedCalls = mockEmbedQuery.mock.calls;
+      // When no user data, should fall back to time-of-day at minimum (from getTimeOfDay)
+      // or 'general context' if even that fails
+      const lastContextCall = embedCalls[embedCalls.length - 1];
+      expect(lastContextCall[0]).toBeDefined();
+      expect(typeof lastContextCall[0]).toBe('string');
+    });
+
+    it('behavioral index appears in context when templates exist', async () => {
+      const behavioralService = services.get(BehavioralMemoryService);
+      await behavioralService.createTemplate({
+        situation: { description: 'Morning greeting pattern', category: 'greeting', triggerPatterns: ['good morning'] },
+        strategy: { approach: 'Respond warmly', guidelines: ['Be friendly'] },
+      });
+
+      const { context } = await contextBuilder.buildContext({ now: new Date('2024-01-15T10:00:00.000Z') });
+
+      expect(context.behavioralIndex).toBeDefined();
+      expect(context.behavioralIndex).toContain('Behavioral Templates');
+      expect(context.behavioralIndex).toContain('Morning greeting pattern');
     });
   });
 });

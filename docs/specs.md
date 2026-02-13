@@ -148,6 +148,7 @@ Ideas for future enhancement (out of scope for current version).
 | 017-orchestrator-rewrite.md | Draft | Simplify and stabilize the orchestration layer |
 | 018-api-server.md | Draft | HTTP API server for external access |
 | 019-memory-consolidation.md | Draft | Scalable memory with consolidation and layered retrieval |
+| 020-behavioral-memory.md | Draft | Adaptive behavioral templates with experimentation |
 
 ## Tips for AI Agents
 

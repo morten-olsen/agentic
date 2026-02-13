@@ -1546,7 +1546,6 @@ type MemoryType =
   | 'fact' // Learned facts about user/world
   | 'preference' // User preferences
   | 'procedure' // How to do things
-  | 'feedback' // User corrections and guidance
   | 'event' // External events that occurred
   | 'entity'; // Knowledge about things in user's world (links to EntityKnowledge)
 ```

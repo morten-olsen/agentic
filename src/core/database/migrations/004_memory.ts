@@ -7,7 +7,7 @@ import type { Knex } from 'knex';
 const up = async (knex: Knex): Promise<void> => {
   await knex.schema.createTable('memories', (table) => {
     table.text('id').primary();
-    table.text('type').notNullable(); // 'conversation' | 'fact' | 'preference' | 'procedure' | 'feedback' | 'event'
+    table.text('type').notNullable(); // 'conversation' | 'fact' | 'preference' | 'procedure' | 'event'
     table.text('content').notNullable();
     table.binary('embedding'); // Serialized float32 array
     table.text('metadata'); // JSON

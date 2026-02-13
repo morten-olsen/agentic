@@ -14,6 +14,7 @@ import { getConfig } from '../../core/config/config.ts';
 import type { HomeAssistantClient, HaPersonState } from '../../integrations/external/homeassistant/index.ts';
 import { recordCoordinate } from '../../domain/location/location.store.ts';
 import { MemoryIndexService } from '../../agent/memory/consolidation/consolidation.ts';
+import { BehavioralMemoryService } from '../../agent/behavioral/behavioral.ts';
 
 import type {
   AgentContext,
@@ -109,6 +110,7 @@ class ContextBuilderService {
       dayPlanContext,
       recentActivity,
       memoryContext,
+      behavioralIndex,
       timeOfDay,
       localTime,
     ] = await Promise.all([
@@ -119,6 +121,7 @@ class ContextBuilderService {
       this.#getDayPlanContext(),
       this.#getRecentActivity(),
       this.#getMemoryContext(),
+      this.#getBehavioralContext(now),
       userModel.getTimeOfDay(now),
       userModel.formatLocalTime(now),
     ]);
@@ -154,6 +157,9 @@ class ContextBuilderService {
 
       // Day plan awareness
       dayPlan: dayPlanContext,
+
+      // Behavioral memory index
+      behavioralIndex,
     };
   };
 
@@ -542,6 +548,52 @@ class ContextBuilderService {
       // Memory index service may not be available yet, return undefined
       return undefined;
     }
+  };
+
+  /**
+   * Gets the behavioral memory context (template index + pending outcomes).
+   */
+  #getBehavioralContext = async (now: Date): Promise<string | undefined> => {
+    try {
+      const behavioralService = this.#services.get(BehavioralMemoryService);
+      const contextSummary = await this.#buildBehavioralContextSummary(now);
+      return await behavioralService.buildContextIndex(contextSummary);
+    } catch {
+      // Behavioral memory service may not be available yet, return undefined
+      return undefined;
+    }
+  };
+
+  /**
+   * Builds a compact keyword summary from user data for behavioral template ranking.
+   * Queries services directly since this runs in parallel with other context builders.
+   */
+  #buildBehavioralContextSummary = async (now: Date): Promise<string> => {
+    const parts: string[] = [];
+
+    try {
+      const userModel = this.#services.get(UserModelService);
+      const [projects, goals] = await Promise.all([userModel.getActiveProjects(), userModel.getGoals()]);
+      const timeOfDay = await userModel.getTimeOfDay(now);
+      parts.push(timeOfDay);
+      if (projects.length > 0) parts.push(projects.map((p) => p.name).join(', '));
+      if (goals.length > 0) parts.push(goals.map((g) => g.description).join(', '));
+    } catch {
+      /* graceful degradation */
+    }
+
+    try {
+      const dayPlanService = this.#services.get(DayPlanService);
+      const plan = await dayPlanService.getTodayPlanContext();
+      if (plan) {
+        const pending = plan.priorities.filter((p) => !p.completed).map((p) => p.description);
+        if (pending.length > 0) parts.push(pending.join(', '));
+      }
+    } catch {
+      /* graceful degradation */
+    }
+
+    return parts.length > 0 ? parts.join('. ') : 'general context';
   };
 
   /**

@@ -393,6 +393,11 @@ const buildSystemPrompt = (
     }
   }
 
+  // Behavioral memory index
+  if (options.context?.behavioralIndex) {
+    sections.push(options.context.behavioralIndex);
+  }
+
   // Active skills context
   if (options.activeSkills && options.skillRegistry && options.activeSkills.length > 0) {
     const skillsContext = generateActiveSkillsContext(options.activeSkills, options.skillRegistry);

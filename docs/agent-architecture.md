@@ -167,7 +167,7 @@ Beyond facts, the agent also learns **how to do things**. Through repeated inter
 - Your formatting preferences for meeting notes
 - Common patterns in your workflows
 
-This procedural knowledge is stored as memories with the `procedure` type, alongside `feedback` memories that capture corrections. Together, these help the agent improve its behavior over time.
+This procedural knowledge is stored as memories with the `procedure` type. User corrections and guidance are captured as behavioral templates, which systematically adapt the agent's behavior over time.
 
 **How procedural knowledge evolves:**
 

@@ -39,6 +39,7 @@ GLaDOS (General Learning and Decision Orchestration System) is a **personal AI a
 | `docs/artifacts.md` | Server-side storage for large tool responses |
 | `docs/memory-consolidation.md` | Memory consolidation system and background jobs |
 | `docs/triggers.md` | Scheduled agent invocations and notifications |
+| `docs/behavioral-memory.md` | Behavioral templates and learning loop |
 | `docs/specs.md` | How to work with specifications |
 | `spec/001-agent.md` | Main technical specification |
 
@@ -150,7 +151,7 @@ See `docs/debugging.md` for detailed workflows.
 
 ## Current Status
 
-**Version**: 1.1 - Memory Consolidation Complete - 1342+ passing tests
+**Version**: 1.1 - Memory Consolidation Complete - 1402+ passing tests
 
 All initial phases are complete:
 

@@ -127,6 +127,9 @@ const agentContextSchema = z.object({
 
   // Day plan awareness
   dayPlan: dayPlanContextSchema.nullable(),
+
+  // Behavioral memory index (pre-formatted text for system prompt)
+  behavioralIndex: z.string().optional(),
 });
 
 type AgentContext = z.infer<typeof agentContextSchema>;

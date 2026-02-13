@@ -19,6 +19,7 @@ import { weatherTool } from './weather.ts';
 import { registerDomainWhitelistTools } from './domain-whitelist.ts';
 import { registerOpenLoopTools } from './openloop.ts';
 import { registerConsolidatedMemoryTools } from './consolidated-memory.ts';
+import { registerBehavioralTools } from './behavioral.ts';
 
 /**
  * Registers all builtin tools with the registry.
@@ -46,6 +47,7 @@ const registerBuiltinTools = (registry: ToolRegistry): void => {
   registerDomainWhitelistTools(registry);
   registerOpenLoopTools(registry);
   registerConsolidatedMemoryTools(registry);
+  registerBehavioralTools(registry);
 };
 
 // Re-export individual tools for direct access
@@ -102,5 +104,7 @@ export type {
 export { registerOpenLoopTools } from './openloop.ts';
 
 export { registerConsolidatedMemoryTools } from './consolidated-memory.ts';
+
+export { registerBehavioralTools } from './behavioral.ts';
 
 export { registerBuiltinTools };

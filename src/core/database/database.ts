@@ -34,6 +34,8 @@ import * as migration024 from './migrations/024_health_tracking.ts';
 import * as migration025 from './migrations/025_domain_whitelist.ts';
 import * as migration026 from './migrations/026_memory_consolidation.ts';
 import * as migration027 from './migrations/027_memory_metadata_columns.ts';
+import * as migration028 from './migrations/028_behavioral_memory.ts';
+import * as migration029 from './migrations/029_migrate_feedback_to_behavioral.ts';
 
 type MigrationSource = {
   getMigrations: () => Promise<string[]>;
@@ -69,6 +71,8 @@ const createMigrationSource = (): MigrationSource => {
     '025_domain_whitelist': migration025,
     '026_memory_consolidation': migration026,
     '027_memory_metadata_columns': migration027,
+    '028_behavioral_memory': migration028,
+    '029_migrate_feedback_to_behavioral': migration029,
   };
 
   return {
