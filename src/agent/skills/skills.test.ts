@@ -282,6 +282,20 @@ describe('SkillRegistry', () => {
       expect(definitions).toHaveLength(1);
       expect(definitions[0].id).toBe('skill-1');
     });
+
+    it('deduplicates when activeSkills has duplicate entries', () => {
+      const skill1 = createTestSkill({ id: 'skill-1' });
+      registry.register(skill1);
+
+      const activeSkills: ActiveSkill[] = [
+        { id: 'skill-1', activatedAt: new Date().toISOString() },
+        { id: 'skill-1', activatedAt: new Date().toISOString() },
+      ];
+
+      const definitions = registry.getActiveSkillDefinitions(activeSkills);
+      expect(definitions).toHaveLength(1);
+      expect(definitions[0].id).toBe('skill-1');
+    });
   });
 
   describe('requiresApproval', () => {

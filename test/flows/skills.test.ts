@@ -259,6 +259,118 @@ describe('Skills Flow', () => {
     expect(chunks.some((c) => c.type === 'done')).toBe(true);
     expect(response).toContain('deactivated');
   });
+
+  it('double activation in successive turns does not cause duplicate tool errors', async () => {
+    let callCount = 0;
+    server.use(
+      http.post('*/chat/completions', () => {
+        callCount++;
+        if (callCount === 1) {
+          // First call: activate the debugging skill
+          return HttpResponse.json(
+            createToolCallCompletion([
+              {
+                id: 'call_activate1',
+                name: 'activate_debugging',
+                args: {},
+              },
+            ]),
+          );
+        }
+        if (callCount === 2) {
+          // Second call: respond after first activation
+          return HttpResponse.json(createChatCompletion('Debugging skill is now active.'));
+        }
+        if (callCount === 3) {
+          // Third call (new turn): LLM tries to activate again (confused)
+          return HttpResponse.json(
+            createToolCallCompletion([
+              {
+                id: 'call_activate2',
+                name: 'activate_debugging',
+                args: {},
+              },
+            ]),
+          );
+        }
+        if (callCount === 4) {
+          // Fourth call: LLM uses a skill tool after second activation attempt
+          return HttpResponse.json(
+            createToolCallCompletion([
+              {
+                id: 'call_list_triggers',
+                name: 'debugging_list_triggers',
+                args: {},
+              },
+            ]),
+          );
+        }
+        // Fifth call: respond with results
+        return HttpResponse.json(createChatCompletion('Here are the triggers.'));
+      }),
+    );
+
+    const conversationId = await orchestrator.startConversation();
+
+    // First turn: activate the skill
+    const firstResult = await collectChatResponse(orchestrator.chat(conversationId, 'Activate debugging'));
+    expect(firstResult.chunks.some((c) => c.type === 'done')).toBe(true);
+
+    // Second turn: should not crash with "Duplicate function declaration"
+    // even though the LLM tries to activate again
+    const secondResult = await collectChatResponse(orchestrator.chat(conversationId, 'List triggers please'));
+
+    // Should complete without errors
+    expect(secondResult.chunks.some((c) => c.type === 'done')).toBe(true);
+
+    // Verify no error chunks
+    const errorChunks = secondResult.chunks.filter((c) => c.type === 'error');
+    for (const chunk of errorChunks) {
+      expect((chunk as { error?: string }).error).not.toContain('Duplicate function declaration');
+    }
+  });
+
+  it('unknown base tool with dot notation does not get misleading underscore hint', async () => {
+    let callCount = 0;
+    server.use(
+      http.post('*/chat/completions', () => {
+        callCount++;
+        if (callCount === 1) {
+          // LLM hallucinates a non-existent base tool
+          return HttpResponse.json(
+            createToolCallCompletion([
+              {
+                id: 'call_update',
+                name: 'tasks.update_user_task',
+                args: { taskId: '123', status: 'done' },
+              },
+            ]),
+          );
+        }
+        // Second call: respond after error
+        return HttpResponse.json(
+          createChatCompletion('I apologize, I used the wrong tool. Let me use the correct one.'),
+        );
+      }),
+    );
+
+    const conversationId = await orchestrator.startConversation();
+    const { chunks } = await collectChatResponse(orchestrator.chat(conversationId, 'Update my task'));
+
+    // Should get an interrupt (error) for the unknown tool
+    const interruptChunks = chunks.filter((c) => c.type === 'interrupt');
+    for (const chunk of interruptChunks) {
+      if (chunk.type === 'interrupt') {
+        const interrupt = (chunk as { type: 'interrupt'; interrupt: { toolCall?: { riskReason?: string } } }).interrupt;
+        if (interrupt.toolCall?.riskReason) {
+          // Should NOT contain the misleading underscore hint
+          expect(interrupt.toolCall.riskReason).not.toContain('underscores as separators');
+          // Should say the tool doesn't exist
+          expect(interrupt.toolCall.riskReason).toContain('does not exist');
+        }
+      }
+    }
+  });
 });
 
 describe('High-Risk Skill Activation', () => {

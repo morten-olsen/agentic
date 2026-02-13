@@ -109,10 +109,14 @@ class SkillRegistry {
 
   /**
    * Gets definitions for active skills.
+   * Deduplicates by skill ID to prevent duplicate tool declarations.
    */
   getActiveSkillDefinitions = (activeSkills: ActiveSkill[]): SkillDefinition[] => {
+    const seen = new Set<string>();
     const definitions: SkillDefinition[] = [];
     for (const active of activeSkills) {
+      if (seen.has(active.id)) continue;
+      seen.add(active.id);
       const skill = this.get(active.id);
       if (skill) {
         definitions.push(skill);

@@ -77,6 +77,12 @@ const skillActivationStrategy: ResumeStrategy = {
       return activeSkills;
     }
 
+    // Prevent duplicate activation
+    const skillId = interrupt.skillActivation.skillId;
+    if (activeSkills.some((s) => s.id === skillId)) {
+      return activeSkills;
+    }
+
     const newActiveSkill: ActiveSkill = {
       id: interrupt.skillActivation.skillId,
       activatedAt: new Date().toISOString(),

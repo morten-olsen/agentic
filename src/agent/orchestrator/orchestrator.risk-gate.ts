@@ -89,6 +89,62 @@ const resolveRiskProfile = async <TInput>(
 };
 
 /**
+ * Builds a helpful error message for an unknown tool call.
+ *
+ * Handles several cases:
+ * - Tool belongs to an inactive skill (with optional format correction)
+ * - Tool name uses colons instead of underscores (skill tool format error)
+ * - Tool name is close to a real base tool (hallucinated name)
+ * - Completely unknown tool
+ */
+const buildUnknownToolMessage = (
+  toolName: string,
+  toolLookup: ToolRegistry | ToolLookup,
+  skillRegistry?: SkillRegistry,
+): string => {
+  if (skillRegistry) {
+    // First try direct lookup in skill registry
+    let skill = skillRegistry.findSkillByToolId(toolName);
+
+    // If not found and name contains a colon, try converting to underscore format
+    // LLMs sometimes hallucinate "skillId:toolName" instead of "skillId_toolName"
+    // Note: dots are NOT converted here because base tools legitimately use dots (e.g., "tasks.create_user_task")
+    let correctedName: string | null = null;
+    if (!skill && toolName.includes(':')) {
+      correctedName = toolName.replace(/:/g, '_');
+      skill = skillRegistry.findSkillByToolId(correctedName);
+    }
+
+    if (skill) {
+      const actualToolName = correctedName ?? toolName;
+      const wrongFormatHint = correctedName
+        ? ` Note: You used "${toolName}" but the correct format is "${correctedName}" (underscore separator).`
+        : '';
+      return (
+        `Tool "${actualToolName}" belongs to the "${skill.name}" skill which is not currently active. ` +
+        `You must first activate the skill by calling "activate_${skill.id}", wait for the activation ` +
+        `to complete, then call the tool in a subsequent response.${wrongFormatHint}`
+      );
+    }
+  }
+
+  // For tools with colons (never valid), suggest underscore format
+  if (toolName.includes(':')) {
+    return (
+      `Unknown tool "${toolName}". This tool does not exist. ` +
+      `Note: Skill tool names use underscores as separators (e.g., "skillId_toolName"), not colons. ` +
+      `Use skills.list_skills to see available tools, or activate a skill first if needed.`
+    );
+  }
+
+  // For all other cases (including dots which are valid for base tools), don't suggest format changes
+  return (
+    `Unknown tool "${toolName}". This tool does not exist. ` +
+    `Use skills.list_skills to see available tools, or activate a skill first if needed.`
+  );
+};
+
+/**
  * Evaluates tool calls against the risk gate.
  *
  * Returns which tool calls can proceed and which require approval.
@@ -123,48 +179,7 @@ const evaluateRiskGate = async (
       // Unknown tool - this is an error, not an approval request
       // Set as pending with isError flag so it returns an error to the LLM
       if (!pending) {
-        // Check if this tool belongs to an inactive skill
-        let errorMessage: string;
-        if (skillRegistry) {
-          // First try direct lookup
-          let skill = skillRegistry.findSkillByToolId(toolCall.name);
-
-          // If not found and name contains a colon or dot, try converting to underscore format
-          // LLMs sometimes hallucinate "skillId:toolName" or "skillId.toolName" instead of "skillId_toolName"
-          let correctedName: string | null = null;
-          if (!skill && (toolCall.name.includes(':') || toolCall.name.includes('.'))) {
-            correctedName = toolCall.name.replace(/[:.]/, '_');
-            skill = skillRegistry.findSkillByToolId(correctedName);
-          }
-
-          if (skill) {
-            const actualToolName = correctedName ?? toolCall.name;
-            const wrongFormatHint = correctedName
-              ? ` Note: You used "${toolCall.name}" but the correct format is "${correctedName}" (underscore separator).`
-              : '';
-            errorMessage =
-              `Tool "${actualToolName}" belongs to the "${skill.name}" skill which is not currently active. ` +
-              `You must first activate the skill by calling "activate_${skill.id}", wait for the activation ` +
-              `to complete, then call the tool in a subsequent response.${wrongFormatHint}`;
-          } else {
-            // Check if it looks like a skill tool format but we can't identify the skill
-            const wrongFormatHint =
-              toolCall.name.includes(':') || toolCall.name.includes('.')
-                ? ` Note: Tool names use underscores as separators (e.g., "skillId_toolName").`
-                : '';
-            errorMessage =
-              `Unknown tool "${toolCall.name}". This tool does not exist.${wrongFormatHint} ` +
-              `Use skills.list_skills to see available tools, or activate a skill first if needed.`;
-          }
-        } else {
-          const wrongFormatHint =
-            toolCall.name.includes(':') || toolCall.name.includes('.')
-              ? ` Note: Tool names use underscores as separators (e.g., "skillId_toolName").`
-              : '';
-          errorMessage =
-            `Unknown tool "${toolCall.name}". This tool does not exist.${wrongFormatHint} ` +
-            `Use skills.list_skills to see available tools, or activate a skill first if needed.`;
-        }
+        const errorMessage = buildUnknownToolMessage(toolCall.name, toolLookup, skillRegistry);
 
         pending = {
           id,
@@ -305,4 +320,11 @@ const formatApprovalPrompt = (pending: PendingToolCall): string => {
 };
 
 export type { PendingToolCall, RiskGateResult };
-export { evaluateRiskGate, createRiskGateNode, formatToolCallInfo, formatApprovalPrompt, DEFAULT_APPROVAL_LEVELS };
+export {
+  evaluateRiskGate,
+  createRiskGateNode,
+  formatToolCallInfo,
+  formatApprovalPrompt,
+  buildUnknownToolMessage,
+  DEFAULT_APPROVAL_LEVELS,
+};

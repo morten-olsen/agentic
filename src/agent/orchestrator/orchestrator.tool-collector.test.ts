@@ -79,16 +79,17 @@ describe('ToolCollector', () => {
       expect(result.size).toBe(0);
     });
 
-    it('returns tool IDs from active skills', () => {
+    it('returns tool IDs and activation tool IDs from active skills', () => {
       const skill = createTestSkill('debug', ['debug_tool1', 'debug_tool2']);
       skillRegistry.register(skill);
 
       const activeSkills: ActiveSkill[] = [{ id: 'debug', activatedAt: new Date().toISOString() }];
       const result = getActiveSkillToolIds(skillRegistry, activeSkills);
 
-      expect(result.size).toBe(2);
+      expect(result.size).toBe(3);
       expect(result.has('debug_tool1')).toBe(true);
       expect(result.has('debug_tool2')).toBe(true);
+      expect(result.has('activate_debug')).toBe(true);
     });
 
     it('aggregates tool IDs from multiple active skills', () => {
@@ -103,10 +104,12 @@ describe('ToolCollector', () => {
       ];
       const result = getActiveSkillToolIds(skillRegistry, activeSkills);
 
-      expect(result.size).toBe(3);
+      expect(result.size).toBe(5);
       expect(result.has('skill1_tool1')).toBe(true);
       expect(result.has('skill2_tool1')).toBe(true);
       expect(result.has('skill2_tool2')).toBe(true);
+      expect(result.has('activate_skill1')).toBe(true);
+      expect(result.has('activate_skill2')).toBe(true);
     });
 
     it('ignores active skills that are not registered', () => {
@@ -119,8 +122,9 @@ describe('ToolCollector', () => {
       ];
       const result = getActiveSkillToolIds(skillRegistry, activeSkills);
 
-      expect(result.size).toBe(1);
+      expect(result.size).toBe(2);
       expect(result.has('registered_tool')).toBe(true);
+      expect(result.has('activate_registered')).toBe(true);
     });
   });
 
@@ -195,7 +199,11 @@ describe('ToolCollector', () => {
 
       // 1 base + 2 skill = 3 tools
       expect(result.tools.length).toBe(3);
-      expect(result.skillToolIds.size).toBe(2);
+      // skillToolIds now includes tool IDs + activation tool ID
+      expect(result.skillToolIds.size).toBe(3);
+      expect(result.skillToolIds.has('debug_tool1')).toBe(true);
+      expect(result.skillToolIds.has('debug_tool2')).toBe(true);
+      expect(result.skillToolIds.has('activate_debug')).toBe(true);
     });
 
     it('builds tool lookup including both base and skill tools', () => {
@@ -262,6 +270,64 @@ describe('ToolCollector', () => {
       expect(toolRegistry.size).toBe(initialSize);
       // Skill tool should not be in registry
       expect(toolRegistry.has('debug_tool')).toBe(false);
+    });
+
+    it('deduplicates tools when activeSkills has duplicate entries', () => {
+      const skill = createTestSkill('debug', ['debug_tool1', 'debug_tool2']);
+      skillRegistry.register(skill);
+      toolRegistry.register(createTestTool('base_tool'));
+
+      // Simulate duplicate activeSkills entries (should not happen, but defensive)
+      const activeSkills: ActiveSkill[] = [
+        { id: 'debug', activatedAt: new Date().toISOString() },
+        { id: 'debug', activatedAt: new Date().toISOString() },
+      ];
+
+      const result = collectTools({
+        baseRegistry: toolRegistry,
+        skillRegistry,
+        externalServiceRegistry,
+        activeSkills,
+        toolContext,
+      });
+
+      // Should have 1 base + 2 skill = 3 tools (not 1 base + 4 duplicate skill tools)
+      expect(result.tools.length).toBe(3);
+      const toolNames = result.tools.map((t) => t.name);
+      expect(toolNames.filter((n) => n === 'debug_tool1').length).toBe(1);
+      expect(toolNames.filter((n) => n === 'debug_tool2').length).toBe(1);
+    });
+
+    it('excludes activation tools for active skills from base tools', () => {
+      const skill = createTestSkill('debug', ['debug_tool1']);
+      skillRegistry.register(skill);
+
+      // Register the activation tool in base registry (as the orchestrator does)
+      toolRegistry.register(
+        createTestTool('activate_debug', {
+          category: 'skills',
+          tags: ['skill', 'activation'],
+        }),
+      );
+      toolRegistry.register(createTestTool('base_tool'));
+
+      const activeSkills: ActiveSkill[] = [{ id: 'debug', activatedAt: new Date().toISOString() }];
+
+      const result = collectTools({
+        baseRegistry: toolRegistry,
+        skillRegistry,
+        externalServiceRegistry,
+        activeSkills,
+        toolContext,
+      });
+
+      // Should have 1 base_tool + 1 debug_tool1 = 2 tools
+      // activate_debug should be excluded because the skill is active
+      expect(result.tools.length).toBe(2);
+      const toolNames = result.tools.map((t) => t.name);
+      expect(toolNames).toContain('base_tool');
+      expect(toolNames).toContain('debug_tool1');
+      expect(toolNames).not.toContain('activate_debug');
     });
   });
 

@@ -83,21 +83,34 @@ const collectTools = (config: ToolCollectorConfig): CollectedTools => {
   // Build lookup map for risk gate
   const toolLookup = buildToolLookup(baseRegistry, skillRegistry, activeSkills, skillToolIds);
 
+  // Deduplicate tools by name to prevent "Duplicate function declaration" errors from the LLM API
+  const allTools = [...baseTools, ...skillTools];
+  const seenToolNames = new Set<string>();
+  const deduplicatedTools = allTools.filter((tool) => {
+    if (seenToolNames.has(tool.name)) return false;
+    seenToolNames.add(tool.name);
+    return true;
+  });
+
   return {
-    tools: [...baseTools, ...skillTools],
+    tools: deduplicatedTools,
     toolLookup,
     skillToolIds,
   };
 };
 
 /**
- * Gets tool IDs from active skills.
+ * Gets tool IDs from active skills, including their activation tools.
+ * Activation tools for active skills are excluded from base tools since
+ * re-activating an already-active skill is unnecessary.
  */
 const getActiveSkillToolIds = (skillRegistry: SkillRegistry, activeSkills: ActiveSkill[]): Set<string> => {
   const skillDefinitions = skillRegistry.getActiveSkillDefinitions(activeSkills);
   const toolIds = new Set<string>();
 
   for (const skill of skillDefinitions) {
+    // Exclude the activation tool for this active skill
+    toolIds.add(`activate_${skill.id}`);
     for (const tool of skill.tools) {
       toolIds.add(tool.id);
     }

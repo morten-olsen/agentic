@@ -5,7 +5,10 @@ import { Services } from '../../../core/services/services.ts';
 import { createDatabaseService, DatabaseService } from '../../../core/database/database.ts';
 import { ToolRegistry } from '../../../agent/tools/tools.ts';
 import type { ToolDefinition, ToolContext } from '../../../agent/tools/tools.ts';
-import { evaluateRiskGate } from '../orchestrator.risk-gate.ts';
+import { evaluateRiskGate, buildUnknownToolMessage } from '../orchestrator.risk-gate.ts';
+import { SkillRegistry } from '../../../agent/skills/skills.ts';
+import type { SkillDefinition } from '../../../agent/skills/skills.schemas.ts';
+import { createToolLookup } from '../orchestrator.tool-collector.ts';
 
 import {
   InterruptService,
@@ -544,5 +547,100 @@ describe('evaluateRiskGate', () => {
     // Medium should pass through with this config
     expect(result.approvedToolCalls).toHaveLength(1);
     expect(result.interruptRequired).toBe(false);
+  });
+
+  it('unknown tool error message does not suggest underscore format for dot-separated base tools', async () => {
+    // Register a base tool with dot notation (like tasks.create_user_task)
+    registry.register(createToolWithRisk('tasks.create_user_task', 'CreateUserTask', 'low'));
+
+    // LLM hallucinates tasks.update_user_task (doesn't exist)
+    const result = await evaluateRiskGate([{ id: 'call-1', name: 'tasks.update_user_task', args: {} }], registry);
+
+    expect(result.pendingToolCall?.isError).toBe(true);
+    expect(result.pendingToolCall?.riskReason).toContain('does not exist');
+    // Should NOT suggest using underscores (dots are valid for base tools)
+    expect(result.pendingToolCall?.riskReason).not.toContain('underscores as separators');
+  });
+
+  it('unknown tool error message suggests underscore format for colon-separated tools', async () => {
+    const result = await evaluateRiskGate([{ id: 'call-1', name: 'debugging:list_triggers', args: {} }], registry);
+
+    expect(result.pendingToolCall?.isError).toBe(true);
+    expect(result.pendingToolCall?.riskReason).toContain('underscores as separators');
+  });
+});
+
+describe('buildUnknownToolMessage', () => {
+  const createTestSkillDef = (id: string, toolIds: string[]): SkillDefinition =>
+    ({
+      id,
+      name: `Skill ${id}`,
+      description: `Test skill ${id}`,
+      activationRisk: 'low',
+      activationReason: 'Test',
+      tools: toolIds.map((toolId) => ({
+        id: toolId,
+        name: `Tool ${toolId}`,
+        description: `Test tool ${toolId}`,
+        category: 'test',
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        risk: { level: 'low' as const, reason: 'Test', potentialImpact: 'None', reversible: true, categories: [] },
+        tags: [],
+        examples: [],
+        execute: async () => ({}),
+      })),
+      domainKnowledge: '',
+      tags: [],
+      relatedSkills: [],
+    }) as SkillDefinition;
+
+  it('identifies tools belonging to inactive skills', () => {
+    const skillRegistry = new SkillRegistry();
+    skillRegistry.register(createTestSkillDef('debugging', ['debugging_list_triggers']));
+    const lookup = createToolLookup(new Map());
+
+    const message = buildUnknownToolMessage('debugging_list_triggers', lookup, skillRegistry);
+
+    expect(message).toContain('belongs to the "Skill debugging" skill');
+    expect(message).toContain('activate_debugging');
+  });
+
+  it('corrects colon-separated skill tool names', () => {
+    const skillRegistry = new SkillRegistry();
+    skillRegistry.register(createTestSkillDef('debugging', ['debugging_list_triggers']));
+    const lookup = createToolLookup(new Map());
+
+    const message = buildUnknownToolMessage('debugging:list_triggers', lookup, skillRegistry);
+
+    expect(message).toContain('belongs to the "Skill debugging" skill');
+    expect(message).toContain('correct format is "debugging_list_triggers"');
+  });
+
+  it('does not suggest underscore format for dot-separated base tool names', () => {
+    const lookup = createToolLookup(new Map());
+
+    const message = buildUnknownToolMessage('tasks.update_user_task', lookup);
+
+    expect(message).toContain('does not exist');
+    expect(message).not.toContain('underscores as separators');
+  });
+
+  it('suggests underscore format for colon-separated unknown tools', () => {
+    const lookup = createToolLookup(new Map());
+
+    const message = buildUnknownToolMessage('unknown:some_tool', lookup);
+
+    expect(message).toContain('underscores as separators');
+  });
+
+  it('provides plain message for simple unknown tool names', () => {
+    const lookup = createToolLookup(new Map());
+
+    const message = buildUnknownToolMessage('nonexistent_tool', lookup);
+
+    expect(message).toContain('does not exist');
+    expect(message).not.toContain('underscores');
+    expect(message).not.toContain('colons');
   });
 });

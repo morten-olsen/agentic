@@ -177,6 +177,26 @@ describe('ResumeStrategies', () => {
       expect(result[1].activationParams).toEqual({ verbose: true });
     });
 
+    it('does not duplicate skills already in active list', () => {
+      const existingSkills: ActiveSkill[] = [{ id: 'debug', activatedAt: '2024-01-01T00:00:00Z' }];
+      const interrupt = createMockInterrupt({
+        type: 'skill_activation',
+        skillActivation: {
+          skillId: 'debug',
+          skillName: 'Debug Skill',
+          activationRisk: 'high',
+          activationReason: 'Provides debugging tools',
+          activationParams: {},
+          toolsSummary: 'debug_tool: Debug helper',
+        },
+      });
+
+      const result = skillActivationStrategy.modifyActiveSkills?.(existingSkills, interrupt) ?? existingSkills;
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('debug');
+    });
+
     it('preserves existing active skills when no skillActivation info', () => {
       const existingSkills: ActiveSkill[] = [{ id: 'existing', activatedAt: '2024-01-01T00:00:00Z' }];
       const interrupt = createMockInterrupt({
